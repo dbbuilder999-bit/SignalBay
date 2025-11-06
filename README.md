@@ -4,12 +4,7 @@ A futuristic dark-mode landing page built with **React + Tailwind + Framer Motio
 
 x402 Forge powers programmable payments, AI coordination, and the next evolution of digital transactions.
 
-### 🚀 Quick Start
-```bash
-npm install
-npm run dev
-```
-Visit `http://localhost:5173`
+![x402 Forge](x402_forge.png)
 
 ### 🌌 Features
 - Animated neon background
