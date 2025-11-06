@@ -96,7 +96,7 @@ export default function ForgeSite() {
           <a href="#developers" className="px-6 py-3 bg-teal-500 text-black rounded-2xl font-semibold hover:bg-teal-400 transition flex items-center gap-2 shadow-[0_0_20px_rgba(0,255,255,0.6)]">
             Get Started <ArrowRight className="h-4 w-4" />
           </a>
-          <a href="https://github.com/x402-forge" className="px-6 py-3 border border-white/30 rounded-2xl font-medium flex items-center gap-2 hover:bg-white/10 transition shadow-[0_0_20px_rgba(0,255,255,0.4)]">
+          <a href="https://github.com/dbbuilder999-bit/x402-forge" className="px-6 py-3 border border-white/30 rounded-2xl font-medium flex items-center gap-2 hover:bg-white/10 transition shadow-[0_0_20px_rgba(0,255,255,0.4)]">
             <Github className="h-4 w-4" /> GitHub
           </a>
         </div>
