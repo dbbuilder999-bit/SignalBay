@@ -148,25 +148,14 @@ export default function MarketsList({ onSelectMarket }) {
           const marketsData = await polymarketService.getMarkets({
             limit: 1000, // Increased limit for better results after client-side filtering
             active: true,
-            closed: false, // We'll fetch closed markets separately and combine them
+            closed: false, // Only fetch open markets
             order: 'endDate', // Sort by endDate
             ascending: true, // Ascending order (earliest dates first)
           })
           
-          // Also fetch closed markets to show at the bottom
-          const closedMarketsData = await polymarketService.getMarkets({
-            limit: 100, // Fewer closed markets needed
-            active: true,
-            closed: true, // Get closed markets
-            order: 'endDate', // Sort by endDate
-            ascending: true, // Ascending order (earliest dates first)
-          })
-          
-          // Combine open and closed markets (will be sorted by sortMarkets function)
-          const allMarkets = [...marketsData, ...closedMarketsData]
-          setMarkets(allMarkets)
-          // Cache the results (before sorting, so we can restore them)
-          categoryCacheRef.current['Trending'] = allMarkets
+          setMarkets(marketsData)
+          // Cache the results
+          categoryCacheRef.current['Trending'] = marketsData
         } else {
           // For specific categories, fetch fresh data using API parameters
           // Check cache first
@@ -186,22 +175,15 @@ export default function MarketsList({ onSelectMarket }) {
             return
           }
 
-          // Build API options for open markets
+          // Build API options
           const apiOptions = {
             limit: 1000,
             active: true,
-            closed: false, // Get open markets first
+            closed: false, // Only fetch open markets
             order: 'endDate', // Sort by endDate
             ascending: true, // Ascending order (earliest dates first)
             // Add category name for debugging/visibility
             _category: selectedCategory.toLowerCase(),
-          }
-          
-          // Also build options for closed markets
-          const closedApiOptions = {
-            ...apiOptions,
-            closed: true, // Get closed markets
-            limit: 100, // Fewer closed markets needed
           }
           
           // For Sports category, use sports tag IDs for server-side filtering
@@ -259,28 +241,11 @@ export default function MarketsList({ onSelectMarket }) {
             }
           }
 
-          // Fetch open markets (with server-side filtering if tag_id is available)
+          // Fetch markets (with server-side filtering if tag_id is available)
           const marketsData = await polymarketService.getMarkets(apiOptions)
           
-          // Also fetch closed markets for this category (apply same filters)
-          let closedMarketsData = []
-          try {
-            // Apply same tag_id filters to closed markets
-            if (apiOptions.tag_id) {
-              closedApiOptions.tag_id = apiOptions.tag_id
-              closedApiOptions.related_tags = apiOptions.related_tags
-            }
-            closedMarketsData = await polymarketService.getMarkets(closedApiOptions)
-          } catch (err) {
-            console.warn('Error fetching closed markets:', err)
-            // Continue without closed markets
-          }
-          
-          // Combine open and closed markets
-          const allMarketsData = [...marketsData, ...closedMarketsData]
-          
           // Client-side filtering by category keywords (as fallback or additional filter)
-          const filtered = allMarketsData.filter(market => {
+          const filtered = marketsData.filter(market => {
             if (categoryKeywords.length === 0) {
               return true
             }
@@ -377,6 +342,14 @@ export default function MarketsList({ onSelectMarket }) {
   }
 
   /**
+   * Helper function to check if market is closed
+   */
+  const isMarketClosed = (market) => {
+    return market.closed === true || market.closed === 'true' || 
+           (market.polymarketData && market.polymarketData.closed === true)
+  }
+
+  /**
    * Sort markets: open markets first, then closed markets
    * Within each group, sort by endDate (ascending - earliest dates first)
    */
@@ -390,10 +363,7 @@ export default function MarketsList({ onSelectMarket }) {
     const closedMarkets = []
 
     marketsArray.forEach(market => {
-      const isClosed = market.closed === true || market.closed === 'true' || 
-                      (market.polymarketData && market.polymarketData.closed === true)
-      
-      if (isClosed) {
+      if (isMarketClosed(market)) {
         closedMarkets.push(market)
       } else {
         openMarkets.push(market)
@@ -424,9 +394,7 @@ export default function MarketsList({ onSelectMarket }) {
     return [...openMarkets, ...closedMarkets]
   }
 
-  // When search is active, use search results directly (no additional filtering needed)
-  // When no search, use markets from category
-  // Sort markets: open first, then closed, both sorted by endDate
+  // Filter and sort: open markets first, sorted by endDate
   const filteredMarkets = sortMarkets(markets)
 
   if (loading) {

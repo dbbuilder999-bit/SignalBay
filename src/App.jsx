@@ -19,6 +19,16 @@ export default function SignalBay() {
   const [activeTab, setActiveTab] = useState('Related')
   const [darkMode, setDarkMode] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [watchlist, setWatchlist] = useState(() => {
+    // Load watchlist from localStorage on mount
+    try {
+      const saved = localStorage.getItem('signalbay-watchlist')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+  const [showRulesModal, setShowRulesModal] = useState(false)
 
   // Fetch markets on mount (only when not showing events list, since MarketsList handles its own data)
   useEffect(() => {
@@ -46,6 +56,33 @@ export default function SignalBay() {
 
     fetchMarkets()
   }, [showEvents])
+
+  // Save watchlist to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('signalbay-watchlist', JSON.stringify(watchlist))
+    } catch (error) {
+      console.error('Error saving watchlist to localStorage:', error)
+    }
+  }, [watchlist])
+
+  // Toggle market in watchlist
+  const toggleWatchlist = (marketId) => {
+    setWatchlist(prev => {
+      if (prev.includes(marketId)) {
+        console.log(`[Watchlist] Removing market ${marketId} from watchlist`)
+        return prev.filter(id => id !== marketId)
+      } else {
+        console.log(`[Watchlist] Adding market ${marketId} to watchlist`)
+        return [...prev, marketId]
+      }
+    })
+  }
+
+  // Check if market is in watchlist
+  const isInWatchlist = (marketId) => {
+    return watchlist.includes(marketId)
+  }
 
   // Subscribe to price updates for selected market
   useEffect(() => {
@@ -151,6 +188,8 @@ export default function SignalBay() {
           onTabChange={setActiveTab}
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
+          watchlist={watchlist}
+          isInWatchlist={isInWatchlist}
         />
 
         {/* Central Trading Area */}
@@ -180,11 +219,33 @@ export default function SignalBay() {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <button className="px-4 py-2 text-sm border border-white/20 rounded-lg hover:bg-white/5 transition">
+                    <button 
+                      onClick={() => setShowRulesModal(true)}
+                      className="px-4 py-2 text-sm border border-white/20 rounded-lg hover:bg-white/5 transition"
+                    >
                       Rules
                     </button>
-                    <button className="p-2 hover:bg-white/5 rounded-lg transition">
-                      <Star className="h-5 w-5 text-gray-400" />
+                    <button 
+                      onClick={() => {
+                        if (selectedMarket) {
+                          console.log(`[Watchlist] Toggling market: ${selectedMarket.id}, currently in watchlist: ${isInWatchlist(selectedMarket.id)}`)
+                          toggleWatchlist(selectedMarket.id)
+                        }
+                      }}
+                      className={`p-2 rounded-lg transition ${
+                        selectedMarket && isInWatchlist(selectedMarket.id)
+                          ? 'bg-yellow-500/20 hover:bg-yellow-500/30'
+                          : 'hover:bg-white/5'
+                      }`}
+                      title={selectedMarket && isInWatchlist(selectedMarket.id) ? 'Remove from watchlist' : 'Add to watchlist'}
+                    >
+                      <Star 
+                        className={`h-5 w-5 transition ${
+                          selectedMarket && isInWatchlist(selectedMarket.id)
+                            ? 'text-yellow-400 fill-yellow-400'
+                            : 'text-gray-400'
+                        }`} 
+                      />
                     </button>
                   </div>
                 </div>
@@ -238,6 +299,104 @@ export default function SignalBay() {
       <button className="fixed bottom-6 right-6 w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center shadow-lg hover:bg-yellow-600 transition z-50">
         <MessageCircle className="h-6 w-6 text-black" />
       </button>
+
+      {/* Rules Modal */}
+      {showRulesModal && selectedMarket && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowRulesModal(false)}
+        >
+          <div 
+            className="bg-[#0a0d14] border border-white/20 rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white">Market Rules</h2>
+                <button
+                  onClick={() => setShowRulesModal(false)}
+                  className="text-gray-400 hover:text-white transition"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">{selectedMarket.title}</h3>
+                  {selectedMarket.description && (
+                    <p className="text-gray-300 mb-4">{selectedMarket.description}</p>
+                  )}
+                </div>
+
+                <div className="border-t border-white/10 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-400 mb-2">Resolution Criteria</h4>
+                  <div className="space-y-2 text-sm text-gray-300">
+                    {selectedMarket.polymarketData?.resolutionSource ? (
+                      <p>
+                        <span className="font-medium">Resolution Source:</span>{' '}
+                        {selectedMarket.polymarketData.resolutionSource}
+                      </p>
+                    ) : (
+                      <p className="text-gray-500 italic">
+                        Resolution criteria will be determined based on the market outcome.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-white/10 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-400 mb-2">Market Details</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-400">End Date:</span>
+                      <p className="text-white">
+                        {selectedMarket.endDate 
+                          ? new Date(selectedMarket.endDate).toLocaleString('en-US', { 
+                              month: 'long', 
+                              day: 'numeric', 
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Category:</span>
+                      <p className="text-white capitalize">{selectedMarket.category || 'General'}</p>
+                    </div>
+                    {selectedMarket.polymarketData?.slug && (
+                      <div className="col-span-2">
+                        <span className="text-gray-400">Market ID:</span>
+                        <p className="text-white font-mono text-xs break-all">
+                          {selectedMarket.polymarketData.slug}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-white/10 pt-4">
+                  <p className="text-xs text-gray-500">
+                    For detailed rules and resolution criteria, visit the market on Polymarket.com
+                    {selectedMarket.polymarketData?.slug && (
+                      <a 
+                        href={`https://polymarket.com/event/${selectedMarket.polymarketData.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-yellow-400 hover:text-yellow-300 ml-1 underline"
+                      >
+                        View on Polymarket →
+                      </a>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

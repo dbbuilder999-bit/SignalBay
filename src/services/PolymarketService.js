@@ -104,8 +104,8 @@ class PolymarketService {
       const params = new URLSearchParams({
         limit: String(options.limit || 20),
         offset: String(options.offset || 0),
-        active: options.active !== false ? 'true' : 'false',
-        closed: options.closed !== undefined ? String(options.closed) : 'false', // Exclude closed markets by default
+        active: options.active !== false ? true : false,
+        closed: options.closed !== undefined ? options.closed : false, // Exclude closed markets by default
         ...(options.tag_id && { 
           tag_id: Array.isArray(options.tag_id) 
             ? options.tag_id.map(String).join(',') 

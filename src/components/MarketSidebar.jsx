@@ -21,10 +21,11 @@ function MarketImage({ src, alt, fallbackIcon }) {
   )
 }
 
-export default function MarketSidebar({ markets, selectedMarket, onSelectMarket, activeTab, onTabChange, darkMode, onToggleDarkMode }) {
+export default function MarketSidebar({ markets, selectedMarket, onSelectMarket, activeTab, onTabChange, darkMode, onToggleDarkMode, watchlist = [], isInWatchlist }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState(null) // null = no search, [] = search with no results, [...] = search results
   const [isSearching, setIsSearching] = useState(false)
+  const [watchlistMarkets, setWatchlistMarkets] = useState([]) // Markets fetched specifically for watchlist
   const searchTimeoutRef = useRef(null)
   const originalMarketsRef = useRef(markets) // Store original markets
 
@@ -34,6 +35,52 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
       originalMarketsRef.current = markets
     }
   }, [markets, searchQuery])
+
+  // Fetch watchlisted markets that aren't in the current markets array
+  useEffect(() => {
+    if (activeTab === 'Watchlist' && watchlist.length > 0) {
+      const fetchWatchlistMarkets = async () => {
+        const missingMarketIds = watchlist.filter(id => 
+          !markets.some(m => 
+            m.id === id || 
+            m.polymarketData?.slug === id ||
+            m.polymarketData?.conditionId === id ||
+            String(m.id) === String(id)
+          )
+        )
+
+        if (missingMarketIds.length > 0) {
+          console.log(`[Watchlist] Fetching ${missingMarketIds.length} missing markets from watchlist`)
+          try {
+            // Try to fetch missing markets by ID
+            const fetchedMarkets = []
+            for (const marketId of missingMarketIds.slice(0, 20)) { // Limit to 20 to avoid too many requests
+              try {
+                const market = await polymarketService.getMarket(marketId)
+                if (market) {
+                  fetchedMarkets.push(market)
+                }
+              } catch (err) {
+                console.warn(`[Watchlist] Could not fetch market ${marketId}:`, err)
+              }
+            }
+            if (fetchedMarkets.length > 0) {
+              setWatchlistMarkets(fetchedMarkets)
+              console.log(`[Watchlist] Fetched ${fetchedMarkets.length} markets for watchlist`)
+            }
+          } catch (err) {
+            console.error('[Watchlist] Error fetching watchlist markets:', err)
+          }
+        } else {
+          setWatchlistMarkets([])
+        }
+      }
+
+      fetchWatchlistMarkets()
+    } else {
+      setWatchlistMarkets([])
+    }
+  }, [activeTab, watchlist, markets])
 
   // Handle search queries using public-search endpoint
   useEffect(() => {
@@ -79,6 +126,14 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
   }, [searchQuery])
 
   /**
+   * Helper function to check if market is closed
+   */
+  const isMarketClosed = (market) => {
+    return market.closed === true || market.closed === 'true' || 
+           (market.polymarketData && market.polymarketData.closed === true)
+  }
+
+  /**
    * Sort markets: open markets first, then closed markets
    * Within each group, sort by endDate (ascending - earliest dates first)
    */
@@ -92,10 +147,7 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
     const closedMarkets = []
 
     marketsArray.forEach(market => {
-      const isClosed = market.closed === true || market.closed === 'true' || 
-                      (market.polymarketData && market.polymarketData.closed === true)
-      
-      if (isClosed) {
+      if (isMarketClosed(market)) {
         closedMarkets.push(market)
       } else {
         openMarkets.push(market)
@@ -126,10 +178,62 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
     return [...openMarkets, ...closedMarkets]
   }
 
+  // Determine which markets to display based on active tab and search
+  let marketsToDisplay = markets
+  
+  // Filter by active tab
+  if (activeTab === 'Watchlist') {
+    if (watchlist.length > 0) {
+      // Combine current markets and fetched watchlist markets
+      const allAvailableMarkets = [...markets, ...watchlistMarkets]
+      
+      marketsToDisplay = allAvailableMarkets.filter(m => {
+        const isInList = watchlist.includes(m.id)
+        if (!isInList) {
+          // Also check if market ID matches any variation (slug, conditionId, etc.)
+          return watchlist.some(watchlistId => 
+            m.id === watchlistId || 
+            m.polymarketData?.slug === watchlistId ||
+            m.polymarketData?.conditionId === watchlistId ||
+            String(m.id) === String(watchlistId)
+          )
+        }
+        return isInList
+      })
+      
+      // Remove duplicates
+      const uniqueMarkets = []
+      const seenIds = new Set()
+      marketsToDisplay.forEach(m => {
+        const id = m.id || m.polymarketData?.slug || m.polymarketData?.conditionId
+        if (id && !seenIds.has(id)) {
+          seenIds.add(id)
+          uniqueMarkets.push(m)
+        }
+      })
+      marketsToDisplay = uniqueMarkets
+      
+      console.log(`[Watchlist Tab] Found ${marketsToDisplay.length} markets in watchlist (watchlist has ${watchlist.length} IDs, from ${markets.length} current + ${watchlistMarkets.length} fetched)`)
+    } else {
+      marketsToDisplay = []
+    }
+  } else if (activeTab === 'Trending') {
+    // For Trending, show markets sorted by volume (already sorted by endDate from API)
+    marketsToDisplay = [...markets].sort((a, b) => (b.volume || 0) - (a.volume || 0))
+  } else if (activeTab === 'Related' && selectedMarket) {
+    // For Related, show markets in same category
+    const relatedCategory = selectedMarket.category
+    marketsToDisplay = markets.filter(m => 
+      m.category === relatedCategory && 
+      m.id !== selectedMarket.id
+    )
+  }
+
   // Determine which markets to display and sort them
+  // API already filters closed markets, so we just sort
   const filteredMarkets = searchResults !== null 
     ? sortMarkets(searchResults) // Use and sort search results if search is active
-    : sortMarkets(markets) // Sort original markets if no search
+    : sortMarkets(marketsToDisplay) // Sort filtered markets if no search
 
   const formatPrice = (price) => {
     if (price >= 100) return '100¢'
@@ -186,6 +290,12 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
         {!isSearching && searchResults !== null && filteredMarkets.length === 0 && (
           <div className="p-4 text-center text-gray-400 text-sm">
             No markets found for "{searchQuery}"
+          </div>
+        )}
+        {!isSearching && searchResults === null && activeTab === 'Watchlist' && filteredMarkets.length === 0 && (
+          <div className="p-4 text-center text-gray-400 text-sm">
+            <p className="mb-2">Your watchlist is empty</p>
+            <p className="text-xs text-gray-500">Click the star icon on any market to add it to your watchlist</p>
           </div>
         )}
         {filteredMarkets.map((market) => (
