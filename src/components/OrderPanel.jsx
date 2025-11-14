@@ -22,6 +22,10 @@ export default function OrderPanel({ market }) {
     )
   }
 
+  // Check if market is closed
+  const isMarketClosed = market.closed === true || market.closed === 'true' || 
+                         (market.polymarketData && market.polymarketData.closed === true)
+
   const bestAsk = market.yesPrice || 50
   const bestBid = market.noPrice || 50
   const selectedOutcomePrice = outcome === 'Yes' ? (market.yesPrice || 50) : (market.noPrice || 50)
@@ -67,6 +71,12 @@ export default function OrderPanel({ market }) {
   const handlePlaceOrder = async () => {
     if (!market || !market.polymarketData) {
       alert('Market data not available')
+      return
+    }
+
+    // Check if market is closed
+    if (isMarketClosed) {
+      alert('This market is closed. Trading is no longer available.')
       return
     }
 
@@ -141,25 +151,38 @@ export default function OrderPanel({ market }) {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Closed Market Message */}
+      {isMarketClosed && (
+        <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 text-center">
+          <div className="text-2xl mb-2">🔒</div>
+          <p className="text-red-400 font-semibold mb-1">Market Closed</p>
+          <p className="text-xs text-red-300/80">
+            This market has been closed. Trading is no longer available.
+          </p>
+        </div>
+      )}
+
       {/* Buy/Sell Toggle */}
       <div className="flex gap-2">
         <button
           onClick={() => setSide('Buy')}
+          disabled={isMarketClosed}
           className={`flex-1 py-3 rounded-lg font-semibold transition ${
             side === 'Buy'
               ? 'bg-yellow-500 text-black'
               : 'bg-white/5 text-gray-400 hover:bg-white/10'
-          }`}
+          } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           Buy
         </button>
         <button
           onClick={() => setSide('Sell')}
+          disabled={isMarketClosed}
           className={`flex-1 py-3 rounded-lg font-semibold transition ${
             side === 'Sell'
               ? 'bg-red-500 text-white'
               : 'bg-white/5 text-gray-400 hover:bg-white/10'
-          }`}
+          } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           Sell
         </button>
@@ -171,21 +194,23 @@ export default function OrderPanel({ market }) {
         <div className="flex gap-2">
           <button
             onClick={() => setOutcome('Yes')}
+            disabled={isMarketClosed}
             className={`flex-1 py-3 rounded-lg font-semibold transition ${
               outcome === 'Yes'
                 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
-            }`}
+            } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             Yes {market.yesPrice.toFixed(1)}¢
           </button>
           <button
             onClick={() => setOutcome('No')}
+            disabled={isMarketClosed}
             className={`flex-1 py-3 rounded-lg font-semibold transition ${
               outcome === 'No'
                 ? 'bg-red-500/20 text-red-400 border border-red-500/50'
                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
-            }`}
+            } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             No {market.noPrice.toFixed(1)}¢
           </button>
@@ -196,21 +221,23 @@ export default function OrderPanel({ market }) {
       <div className="flex gap-2">
         <button
           onClick={() => setOrderType('Limit')}
+          disabled={isMarketClosed}
           className={`flex-1 py-2 text-sm rounded transition ${
             orderType === 'Limit'
               ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
               : 'bg-white/5 text-gray-400 hover:bg-white/10'
-          }`}
+          } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           Limit
         </button>
         <button
           onClick={() => setOrderType('Market')}
+          disabled={isMarketClosed}
           className={`flex-1 py-2 text-sm rounded transition ${
             orderType === 'Market'
               ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
               : 'bg-white/5 text-gray-400 hover:bg-white/10'
-          }`}
+          } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           Market
         </button>
@@ -228,7 +255,7 @@ export default function OrderPanel({ market }) {
           step="0.1"
           min="0"
           max="100"
-          disabled={orderType === 'Market'}
+          disabled={orderType === 'Market' || isMarketClosed}
           className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
         />
         {orderType === 'Market' && (
@@ -247,7 +274,8 @@ export default function OrderPanel({ market }) {
             step="0.01"
             min="0"
             placeholder="0"
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 pr-16 text-white focus:outline-none focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/50"
+            disabled={isMarketClosed}
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 pr-16 text-white focus:outline-none focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-sm text-gray-400">USDC</span>
         </div>
@@ -256,18 +284,23 @@ export default function OrderPanel({ market }) {
             <button
               key={val}
               onClick={() => handleQuickFill(val)}
-              className="px-3 py-1 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10 transition"
+              disabled={isMarketClosed}
+              className="px-3 py-1 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               +${val}
             </button>
           ))}
           <button
             onClick={() => handleQuickFill('Max')}
-            className="px-3 py-1 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10 transition"
+            disabled={isMarketClosed}
+            className="px-3 py-1 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Max
           </button>
-          <button className="px-3 py-1 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10 transition">
+          <button 
+            disabled={isMarketClosed}
+            className="px-3 py-1 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <Edit className="h-3 w-3" />
           </button>
         </div>
@@ -329,7 +362,7 @@ export default function OrderPanel({ market }) {
       {/* Action Button */}
       <button
         onClick={handlePlaceOrder}
-        disabled={!isConnected || isPlacingOrder || !amount || parseFloat(amount) <= 0}
+        disabled={isMarketClosed || !isConnected || isPlacingOrder || !amount || parseFloat(amount) <= 0}
         className={`w-full py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2 ${
           side === 'Buy'
             ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
@@ -341,6 +374,8 @@ export default function OrderPanel({ market }) {
             <Loader2 className="h-5 w-5 animate-spin" />
             Placing Order...
           </>
+        ) : isMarketClosed ? (
+          'Market Closed'
         ) : isConnected ? (
           `${side} ${outcome}`
         ) : (

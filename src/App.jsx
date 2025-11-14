@@ -32,7 +32,7 @@ export default function SignalBay() {
       try {
         setLoading(true)
         // Use same limit as MarketsList to leverage cache
-        const marketData = await dataService.getMarkets({ limit: 200, active: true, closed: false })
+        const marketData = await dataService.getMarkets({ limit: 1000, active: true, closed: false })
         setMarkets(marketData)
         if (marketData.length > 0 && !selectedMarket) {
           setSelectedMarket(marketData[0])
@@ -163,7 +163,15 @@ export default function SignalBay() {
                   <div className="flex items-center gap-4">
                     <span className="text-3xl">{selectedMarket.icon}</span>
                     <div className="flex-1">
-                      <h2 className="text-2xl font-bold text-white mb-2">{selectedMarket.title}</h2>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h2 className="text-2xl font-bold text-white">{selectedMarket.title}</h2>
+                        {(selectedMarket.closed === true || selectedMarket.closed === 'true' || 
+                          (selectedMarket.polymarketData && selectedMarket.polymarketData.closed === true)) && (
+                          <span className="px-3 py-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/50 rounded-full">
+                            🔒 Closed
+                          </span>
+                        )}
+                      </div>
                       <TruncatedText 
                         text={selectedMarket.description} 
                         maxLength={200}

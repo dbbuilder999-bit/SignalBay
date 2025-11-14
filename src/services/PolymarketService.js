@@ -5,15 +5,19 @@
  * Polymarket Gamma API Documentation:
  * - Markets API: https://docs.polymarket.com/developers/gamma-markets-api/get-markets
  * - Events API: /events (currently implemented)
- * - Sports API: /sports (not yet implemented)
- * - Tags API: /tags (not yet implemented)
+ * - Tags API: /tags (currently implemented - use getTags() to get tag_id values)
+ * - Sports API: /sports (currently implemented - use getSports() to get sport metadata and tag IDs)
  * - Health API: /health (not yet implemented)
  * 
  * Currently using:
- * - /markets endpoint for fetching markets
+ * - /markets endpoint for fetching markets (supports tag_id, sports_market_types, etc.)
+ * - /public-search endpoint for searching markets (supports q, search_tags, sort, etc.)
  * - /events endpoint for fetching events
+ * - /tags endpoint for fetching tags (to get tag_id values for filtering)
+ * - /sports endpoint for fetching sports metadata (to get sport tag IDs)
  * 
- * TODO: Consider implementing /sports, /tags, and /health endpoints for richer data
+ * TODO: 
+ * - Consider implementing /health endpoint for API health monitoring
  * 
  * - No authentication required for reading market data (public API)
  * - Authentication only needed for trading (placing orders)
@@ -40,7 +44,7 @@ class PolymarketService {
     this.funderAddress = POLYMARKET_CONFIG.funderAddress
     // Cache for market data
     this.cache = new Map()
-    this.cacheTimeout = 60000 // 1 minute cache
+    this.cacheTimeout = 300000 // 5 minutes cache (300000 ms = 5 * 60 * 1000)
     this.subscriptions = new Map()
   }
 
@@ -53,16 +57,15 @@ class PolymarketService {
     try {
       debugger // Moved to top so it's always hit when getMarkets is called
       
-      // CACHE DISABLED - Always fetch fresh data
       // Check cache - if we have a cached result with same or larger limit, use it
-      // const requestedLimit = options.limit || 20
-      // let cached = null
-      // let cacheKey = null
+      const requestedLimit = options.limit || 20
+      let cached = null
+      let cacheKey = null
       
       // Try to find a cached result that satisfies our request
       // Look for any cache entry with same active/closed settings and sufficient limit
-      // const activeFilter = options.active !== false
-      // const closedFilter = options.closed !== undefined ? options.closed : false
+      const activeFilter = options.active !== false
+      const closedFilter = options.closed !== undefined ? options.closed : false
       
       // for (const [key, value] of this.cache.entries()) {
       //   if (key.startsWith('markets-')) {
@@ -71,13 +74,13 @@ class PolymarketService {
       //       const cachedLimit = cachedOptions.limit || 20
       //       const cachedActive = cachedOptions.active !== false
       //       const cachedClosed = cachedOptions.closed !== undefined ? cachedOptions.closed : false
-      //       
+            
       //       // If cached limit is >= requested limit and other options match, use it
       //       if (cachedLimit >= requestedLimit && 
       //           cachedActive === activeFilter &&
       //           cachedClosed === closedFilter &&
       //           Date.now() - value.timestamp < this.cacheTimeout) {
-      //         console.log(`[Cache HIT] Using cached data: ${key} (requested limit: ${requestedLimit})`)
+      //         console.log(`[Cache HIT] Using cached data: ${key} (requested limit: ${requestedLimit}, age: ${Math.round((Date.now() - value.timestamp) / 1000)}s)`)
       //         // Return a slice if we need fewer items
       //         if (cachedLimit > requestedLimit) {
       //           return value.data.slice(0, requestedLimit)
@@ -91,10 +94,10 @@ class PolymarketService {
       //   }
       // }
       
-      console.log(`[Cache DISABLED] Fetching fresh data for limit: ${options.limit || 20}, active: ${options.active !== false}, closed: ${options.closed || false}`)
+      console.log(`[Cache MISS] No suitable cache found for limit: ${requestedLimit}, active: ${activeFilter}, closed: ${closedFilter}`)
       
       // If no suitable cache found, create new cache key
-      const cacheKey = `markets-${JSON.stringify(options)}`
+      cacheKey = `markets-${JSON.stringify(options)}`
 
       // Polymarket Gamma Markets API endpoint
       // Documentation: https://docs.polymarket.com/developers/gamma-markets-api/get-markets
@@ -103,13 +106,34 @@ class PolymarketService {
         offset: String(options.offset || 0),
         active: options.active !== false ? 'true' : 'false',
         closed: options.closed !== undefined ? String(options.closed) : 'false', // Exclude closed markets by default
-        ...(options.category && { category: options.category }),
-        ...(options.tokens && { tokens: options.tokens }),
+        ...(options.tag_id && { 
+          tag_id: Array.isArray(options.tag_id) 
+            ? options.tag_id.map(String).join(',') 
+            : String(options.tag_id) 
+        }),
+        ...(options.related_tags !== undefined && { related_tags: String(options.related_tags) }),
+        ...(options.sports_market_types && { 
+          sports_market_types: Array.isArray(options.sports_market_types) 
+            ? options.sports_market_types.join(',') 
+            : String(options.sports_market_types) 
+        }),
+        ...(options.order && { order: options.order }),
+        ...(options.ascending !== undefined && { ascending: String(options.ascending) }),
+        ...(options.clob_token_ids && { 
+          clob_token_ids: Array.isArray(options.clob_token_ids) 
+            ? options.clob_token_ids.join(',') 
+            : String(options.clob_token_ids) 
+        }),
+        // Add category for debugging visibility (API will ignore unknown params)
+        ...(options._category && { category: options._category }),
       })
       // Try the Gamma Markets API endpoint (uses proxy in dev, direct in prod)
+      const url = `${this.apiUrl}/markets?${params.toString()}`
+      console.log(`[API Request] ${url}`)
+      // Decode for readability in console (API will receive encoded version)
+      console.log(`[API Params Decoded] ${decodeURIComponent(params.toString())}`)
       debugger
-      const response = await fetch(
-        `${this.apiUrl}/markets?${params.toString()}`,
+      const response = await fetch(url,
         {
           headers: {
             'Accept': 'application/json',
@@ -141,12 +165,12 @@ class PolymarketService {
       const markets = this.transformMarkets(marketsData)
       console.log('Transformed markets:', markets.length, 'items')
 
-      // CACHE DISABLED - Don't cache results
-      // Cache the result
-      // this.cache.set(cacheKey, {
-      //   data: markets,
-      //   timestamp: Date.now(),
-      // })
+      // Cache the result (5 minute TTL)
+      this.cache.set(cacheKey, {
+        data: markets,
+        timestamp: Date.now(),
+      })
+      console.log(`[Cache SET] Cached ${markets.length} markets with key: ${cacheKey}`)
 
       return markets.length > 0 ? markets : []
     } catch (error) {
@@ -348,6 +372,7 @@ class PolymarketService {
           category: category,
           startDate: startDate,
           endDate: endDate,
+          closed: market.closed === true || market.closed === 'true' || market.closed === 1, // Preserve closed status
           // Polymarket-specific data
           polymarketData: {
             conditionId: conditionId,
@@ -358,6 +383,7 @@ class PolymarketService {
             noTokenId: noTokenId,
             tickSize: market.tickSize || market.tick_size || '0.001',
             negRisk: market.negRisk || market.neg_risk || market.enableNegRisk || false,
+            closed: market.closed === true || market.closed === 'true' || market.closed === 1, // Also preserve in polymarketData
           },
         }
       })
@@ -644,29 +670,264 @@ class PolymarketService {
   }
 
   /**
-   * Search markets
+   * Search markets using Polymarket public-search endpoint
+   * @param {string} query - Search query string
+   * @param {Object} options - Additional search options
+   * @returns {Promise<Array>} Array of market objects
    */
-  async searchMarkets(query) {
+  async searchMarkets(query, options = {}) {
     try {
-      const response = await fetch(
-        `${this.apiUrl}/markets?limit=50&active=true`
-      )
+      if (!query || query.trim().length === 0) {
+        return []
+      }
+
+      // Check cache first
+      const cacheKey = `search-${query}-${JSON.stringify(options)}`
+      const cached = this.cache.get(cacheKey)
+      
+      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+        console.log(`[Cache HIT] Using cached search results for: "${query}" (age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`)
+        return cached.data
+      }
+      
+      console.log(`[Cache MISS] Fetching fresh search results for: "${query}"`)
+
+      const params = new URLSearchParams({
+        q: query.trim(),
+        ...(options.cache !== undefined && { cache: String(options.cache) }),
+        ...(options.events_status && { events_status: options.events_status }),
+        ...(options.limit_per_type && { limit_per_type: String(options.limit_per_type) }),
+        ...(options.page && { page: String(options.page) }),
+        ...(options.events_tag && Array.isArray(options.events_tag) && { 
+          events_tag: options.events_tag.join(',') 
+        }),
+        ...(options.keep_closed_markets !== undefined && { keep_closed_markets: String(options.keep_closed_markets) }),
+        ...(options.sort && { sort: options.sort }),
+        ...(options.ascending !== undefined && { ascending: String(options.ascending) }),
+        ...(options.search_tags !== undefined && { search_tags: String(options.search_tags) }),
+        ...(options.search_profiles !== undefined && { search_profiles: String(options.search_profiles) }),
+        ...(options.recurrence && { recurrence: options.recurrence }),
+        ...(options.exclude_tag_id && Array.isArray(options.exclude_tag_id) && { 
+          exclude_tag_id: options.exclude_tag_id.map(String).join(',') 
+        }),
+        ...(options.optimized !== undefined && { optimized: String(options.optimized) }),
+      })
+      debugger;
+      const url = `${this.apiUrl}/public-search?${params.toString()}`
+      console.log(`[Search API] ${url}`)
+      
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      })
 
       if (!response.ok) {
-        throw new Error(`Search API error: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`Search API error: ${response.status} - ${errorText}`)
       }
 
       const data = await response.json()
-      const markets = this.transformMarkets(data)
+      console.log('Search API response:', data)
+      
+      // Handle different response formats
+      // The public-search endpoint returns results organized by type: { markets: [], events: [], tags: [] }
+      let marketsData = []
+      
+      // First, extract markets from data.markets
+      if (Array.isArray(data)) {
+        // If response is directly an array, use it
+        marketsData = data
+      } else if (data.markets) {
+        // Check for markets array first (most common structure for /public-search)
+        marketsData = Array.isArray(data.markets) ? data.markets : []
+      } else if (data.data) {
+        // Check for nested data.markets or data as array
+        if (Array.isArray(data.data)) {
+          marketsData = data.data
+        } else if (data.data.markets && Array.isArray(data.data.markets)) {
+          marketsData = data.data.markets
+        }
+      } else if (data.results) {
+        // Check for results array
+        marketsData = Array.isArray(data.results) ? data.results : []
+      }
+      
+      // Also extract markets from events (events contain markets)
+      if (data.events && Array.isArray(data.events) && data.events.length > 0) {
+        console.log(`[Search] Found ${data.events.length} events, extracting markets from events...`)
+        const marketsFromEvents = []
+        
+        data.events.forEach(event => {
+          // Events may have a markets property with an array of markets
+          if (event.markets && Array.isArray(event.markets)) {
+            marketsFromEvents.push(...event.markets)
+          }
+          // Some events might be market-like objects themselves
+          // Check if the event itself looks like a market (has question, outcomes, etc.)
+          else if (event.question || event.title || event.outcomes) {
+            // Treat the event as a market
+            marketsFromEvents.push(event)
+          }
+        })
+        
+        if (marketsFromEvents.length > 0) {
+          console.log(`[Search] Extracted ${marketsFromEvents.length} markets from events`)
+          marketsData = [...marketsData, ...marketsFromEvents]
+        } else {
+          console.log('[Search] Events found but no markets extracted from them')
+        }
+      }
+      
+      // Log the structure for debugging
+      if (data.events !== undefined) {
+        console.log(`[Search] Response structure - markets: ${Array.isArray(data.markets) ? data.markets.length : 'N/A'}, events: ${Array.isArray(data.events) ? data.events.length : 'N/A'}, total markets after extraction: ${marketsData.length}`)
+      }
 
-      // Filter by query
-      const queryLower = query.toLowerCase()
-      return markets.filter(market =>
-        market.title.toLowerCase().includes(queryLower) ||
-        market.description.toLowerCase().includes(queryLower)
-      )
+      // Transform the markets
+      const markets = this.transformMarkets(marketsData)
+      console.log(`[Search] Found ${markets.length} markets for query: "${query}"`)
+
+      // Cache the result (5 minute TTL)
+      this.cache.set(cacheKey, {
+        data: markets,
+        timestamp: Date.now(),
+      })
+      console.log(`[Cache SET] Cached ${markets.length} search results for: "${query}"`)
+
+      return markets
     } catch (error) {
       console.error('Error searching markets:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Fetch tags from Polymarket
+   * Tags can be used to get tag_id values for filtering markets by category
+   * @returns {Promise<Array>} Array of tag objects with id, name, etc.
+   */
+  async getTags() {
+    try {
+      // Check cache first
+      const cacheKey = 'tags-metadata'
+      const cached = this.cache.get(cacheKey)
+      
+      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+        console.log(`[Cache HIT] Using cached tags data (age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`)
+        return cached.data
+      }
+      
+      console.log(`[Cache MISS] Fetching fresh tags data`)
+
+      const response = await fetch(
+        `${this.apiUrl}/tags`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`Polymarket API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const tagsData = Array.isArray(data) ? data : (data.data || data.tags || [])
+
+      // Cache the result (5 minute TTL)
+      this.cache.set(cacheKey, {
+        data: tagsData,
+        timestamp: Date.now(),
+      })
+      console.log(`[Cache SET] Cached ${tagsData.length} tags with key: ${cacheKey}`)
+
+      return tagsData
+    } catch (error) {
+      console.error('Error fetching Polymarket tags:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Fetch sports metadata from Polymarket
+   * Returns sports with their tag IDs, images, series info, etc.
+   * Use this to get tag_id values for filtering sports markets
+   * @returns {Promise<Array>} Array of sport objects with sport name, tags, series, etc.
+   */
+  async getSports() {
+    try {
+      // Check cache first
+      const cacheKey = 'sports-metadata'
+      const cached = this.cache.get(cacheKey)
+      
+      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+        console.log(`[Cache HIT] Using cached sports data (age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`)
+        return cached.data
+      }
+      
+      console.log(`[Cache MISS] Fetching fresh sports data`)
+
+      const response = await fetch(
+        `${this.apiUrl}/sports`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`Polymarket API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const sportsData = Array.isArray(data) ? data : (data.data || data.sports || [])
+
+      // Cache the result (5 minute TTL)
+      this.cache.set(cacheKey, {
+        data: sportsData,
+        timestamp: Date.now(),
+      })
+      console.log(`[Cache SET] Cached ${sportsData.length} sports with key: ${cacheKey}`)
+
+      return sportsData
+    } catch (error) {
+      console.error('Error fetching Polymarket sports:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Get tag IDs for a specific sport (e.g., "NFL", "NBA", "MLB")
+   * @param {string} sportName - Sport name (e.g., "NFL", "NBA", "MLB")
+   * @returns {Promise<Array<number>>} Array of tag IDs for that sport
+   */
+  async getSportTagIds(sportName) {
+    try {
+      const sports = await this.getSports()
+      const sport = sports.find(s => 
+        s.sport && s.sport.toUpperCase() === sportName.toUpperCase()
+      )
+      
+      if (!sport || !sport.tags) {
+        return []
+      }
+      
+      // Tags can be a comma-separated string or array
+      if (typeof sport.tags === 'string') {
+        return sport.tags.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+      } else if (Array.isArray(sport.tags)) {
+        return sport.tags.map(id => parseInt(id)).filter(id => !isNaN(id))
+      }
+      
+      return []
+    } catch (error) {
+      console.error(`Error getting tag IDs for sport ${sportName}:`, error)
       return []
     }
   }
@@ -678,13 +939,16 @@ class PolymarketService {
    */
   async getEvents(options = {}) {
     try {
-      // CACHE DISABLED - Always fetch fresh data
-      // const cacheKey = `events-${JSON.stringify(options)}`
-      // const cached = this.cache.get(cacheKey)
-      // 
-      // if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-      //   return cached.data
-      // }
+      // Check cache first
+      const cacheKey = `events-${JSON.stringify(options)}`
+      const cached = this.cache.get(cacheKey)
+      
+      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+        console.log(`[Cache HIT] Using cached events data (age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`)
+        return cached.data
+      }
+      
+      console.log(`[Cache MISS] Fetching fresh events data`)
 
       // Polymarket Events API endpoint
       const params = new URLSearchParams({
@@ -714,12 +978,12 @@ class PolymarketService {
       // Handle different response formats
       const eventsData = Array.isArray(data) ? data : (data.data || data.events || [])
 
-      // CACHE DISABLED - Don't cache results
-      // Cache the result
-      // this.cache.set(cacheKey, {
-      //   data: eventsData,
-      //   timestamp: Date.now(),
-      // })
+      // Cache the result (5 minute TTL)
+      this.cache.set(cacheKey, {
+        data: eventsData,
+        timestamp: Date.now(),
+      })
+      console.log(`[Cache SET] Cached ${eventsData.length} events with key: ${cacheKey}`)
 
       return eventsData
     } catch (error) {

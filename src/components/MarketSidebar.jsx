@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Search, Sun, Moon } from 'lucide-react'
 import TruncatedText from './TruncatedText'
+import { polymarketService } from '../services/PolymarketService'
 
 // Component to handle market images with fallback to icon
 function MarketImage({ src, alt, fallbackIcon }) {
@@ -22,11 +23,113 @@ function MarketImage({ src, alt, fallbackIcon }) {
 
 export default function MarketSidebar({ markets, selectedMarket, onSelectMarket, activeTab, onTabChange, darkMode, onToggleDarkMode }) {
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState(null) // null = no search, [] = search with no results, [...] = search results
+  const [isSearching, setIsSearching] = useState(false)
+  const searchTimeoutRef = useRef(null)
+  const originalMarketsRef = useRef(markets) // Store original markets
 
-  const filteredMarkets = markets.filter(market =>
-    market.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    market.description.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Update original markets ref when markets prop changes
+  useEffect(() => {
+    if (!searchQuery) {
+      originalMarketsRef.current = markets
+    }
+  }, [markets, searchQuery])
+
+  // Handle search queries using public-search endpoint
+  useEffect(() => {
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    if (!searchQuery || searchQuery.trim().length === 0) {
+      // If search is cleared, restore original markets
+      setSearchResults(null)
+      setIsSearching(false)
+      return
+    }
+
+    // Debounce search to avoid too many API calls
+    setIsSearching(true)
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        console.log(`[MarketSidebar Search] Searching for: "${searchQuery}"`)
+        const results = await polymarketService.searchMarkets(searchQuery, {
+          limit_per_type: 50, // Limit results per type (markets, events, etc.)
+          search_tags: true, // Search in tags
+          search_profiles: false, // Don't search profiles for now
+          sort: 'relevance', // Sort by relevance
+        })
+
+        setSearchResults(results)
+        console.log(`[MarketSidebar Search] Found ${results.length} results`)
+      } catch (err) {
+        console.error('Error searching markets in sidebar:', err)
+        setSearchResults([]) // Set to empty array on error
+      } finally {
+        setIsSearching(false)
+      }
+    }, 500) // Wait 500ms after user stops typing
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [searchQuery])
+
+  /**
+   * Sort markets: open markets first, then closed markets
+   * Within each group, sort by endDate (ascending - earliest dates first)
+   */
+  const sortMarkets = (marketsArray) => {
+    if (!Array.isArray(marketsArray) || marketsArray.length === 0) {
+      return marketsArray
+    }
+
+    // Separate open and closed markets
+    const openMarkets = []
+    const closedMarkets = []
+
+    marketsArray.forEach(market => {
+      const isClosed = market.closed === true || market.closed === 'true' || 
+                      (market.polymarketData && market.polymarketData.closed === true)
+      
+      if (isClosed) {
+        closedMarkets.push(market)
+      } else {
+        openMarkets.push(market)
+      }
+    })
+
+    // Sort function: by endDate (ascending - earliest first)
+    const sortByEndDate = (a, b) => {
+      const dateA = a.endDate ? new Date(a.endDate).getTime() : Infinity
+      const dateB = b.endDate ? new Date(b.endDate).getTime() : Infinity
+      
+      // If both have dates, sort ascending (earliest first)
+      if (dateA !== Infinity && dateB !== Infinity) {
+        return dateA - dateB
+      }
+      // Markets without dates go to the end
+      if (dateA === Infinity && dateB === Infinity) return 0
+      if (dateA === Infinity) return 1
+      if (dateB === Infinity) return -1
+      return 0
+    }
+
+    // Sort each group by endDate
+    openMarkets.sort(sortByEndDate)
+    closedMarkets.sort(sortByEndDate)
+
+    // Return open markets first, then closed markets
+    return [...openMarkets, ...closedMarkets]
+  }
+
+  // Determine which markets to display and sort them
+  const filteredMarkets = searchResults !== null 
+    ? sortMarkets(searchResults) // Use and sort search results if search is active
+    : sortMarkets(markets) // Sort original markets if no search
 
   const formatPrice = (price) => {
     if (price >= 100) return '100¢'
@@ -75,6 +178,16 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
 
       {/* Market List */}
       <div className="flex-1 overflow-y-auto">
+        {isSearching && (
+          <div className="p-4 text-center text-gray-400 text-sm">
+            Searching...
+          </div>
+        )}
+        {!isSearching && searchResults !== null && filteredMarkets.length === 0 && (
+          <div className="p-4 text-center text-gray-400 text-sm">
+            No markets found for "{searchQuery}"
+          </div>
+        )}
         {filteredMarkets.map((market) => (
           <button
             key={market.id}

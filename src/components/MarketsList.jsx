@@ -4,7 +4,24 @@ import { polymarketService } from '../services/PolymarketService'
 
 const categories = ['Trending', 'New', 'Politics', 'Sports', 'Finance', 'Crypto', 'Tech', 'Pop Culture', 'Business', 'World', 'Science']
 
-// Map UI category names to Polymarket category values
+// Map UI category names to Polymarket API parameters
+// Note: API uses tag_id (integer) for categories, not category (string)
+// For sports, we can use sports_market_types parameter
+const categoryApiMap = {
+  'Trending': null, // Special: shows all markets
+  'New': null, // Special: shows all markets
+  'Politics': null, // Would need tag_id - using client-side filtering for now
+  'Sports': { sports_market_types: [] }, // Can use sports_market_types for sports
+  'Finance': null, // Would need tag_id - using client-side filtering for now
+  'Crypto': null, // Would need tag_id - using client-side filtering for now
+  'Tech': null, // Would need tag_id - using client-side filtering for now
+  'Pop Culture': null, // Would need tag_id - using client-side filtering for now
+  'Business': null, // Would need tag_id - using client-side filtering for now
+  'World': null, // Would need tag_id - using client-side filtering for now
+  'Science': null, // Would need tag_id - using client-side filtering for now
+}
+
+// Map UI category names to keywords for client-side filtering (fallback)
 const categoryMap = {
   'Trending': null, // Special: shows all markets
   'New': null, // Special: shows all markets
@@ -47,6 +64,70 @@ export default function MarketsList({ onSelectMarket }) {
   const [selectedCategory, setSelectedCategory] = useState('Trending')
   const [viewMode, setViewMode] = useState('list') // 'list' or 'tile'
   const categoryCacheRef = useRef({}) // Cache markets by category using ref to avoid dependency issues
+  const sportsTagIdsRef = useRef(null) // Cache sports tag IDs
+  const tagsRef = useRef(null) // Cache tags data for category-to-tag_id mapping
+
+  // Map UI category names to potential tag name matches
+  const categoryToTagNameMap = {
+    'Politics': ['politics', 'political', 'election', 'elections', 'government', 'governance'],
+    'Finance': ['finance', 'financial', 'economics', 'economic', 'fiscal', 'monetary'],
+    'Crypto': ['crypto', 'cryptocurrency', 'bitcoin', 'ethereum', 'blockchain', 'defi', 'web3'],
+    'Tech': ['tech', 'technology', 'software', 'hardware', 'ai', 'artificial intelligence', 'machine learning'],
+    'Pop Culture': ['entertainment', 'pop culture', 'celebrity', 'movies', 'music', 'tv', 'television', 'film'],
+    'Business': ['business', 'companies', 'corporate', 'enterprise', 'startup', 'startups'],
+    'World': ['world', 'international', 'global', 'geopolitics', 'foreign', 'diplomacy'],
+    'Science': ['science', 'scientific', 'research', 'physics', 'chemistry', 'biology', 'medicine', 'medical'],
+  }
+
+  /**
+   * Find tag IDs for a given category by matching category name to tag names
+   * @param {string} categoryName - UI category name (e.g., "Politics", "Crypto")
+   * @returns {Array<number>} Array of tag IDs for that category
+   */
+  const findTagIdsForCategory = (categoryName) => {
+    if (!tagsRef.current || !Array.isArray(tagsRef.current)) {
+      return []
+    }
+
+    const tagNameMatches = categoryToTagNameMap[categoryName] || []
+    if (tagNameMatches.length === 0) {
+      return []
+    }
+
+    const matchedTagIds = []
+    tagsRef.current.forEach(tag => {
+      const tagName = (tag.name || tag.tag || tag.title || '').toLowerCase()
+      const tagId = tag.id || tag.tag_id
+
+      if (tagId && tagNameMatches.some(match => tagName.includes(match.toLowerCase()))) {
+        matchedTagIds.push(tagId)
+      }
+    })
+
+    return matchedTagIds
+  }
+
+  // Fetch tags on component mount (for category-to-tag_id mapping)
+  useEffect(() => {
+    const fetchTags = async () => {
+      if (tagsRef.current) {
+        // Tags already cached
+        return
+      }
+
+      try {
+        console.log('[Tags] Fetching tags for category mapping...')
+        const tags = await polymarketService.getTags()
+        tagsRef.current = tags
+        console.log(`[Tags] Cached ${tags.length} tags for category mapping`)
+      } catch (err) {
+        console.warn('Error fetching tags, will use client-side filtering as fallback:', err)
+        tagsRef.current = [] // Set to empty array to prevent repeated failed attempts
+      }
+    }
+
+    fetchTags()
+  }, []) // Only run once on mount
 
   // Fetch markets based on selected category
   useEffect(() => {
@@ -65,15 +146,29 @@ export default function MarketsList({ onSelectMarket }) {
           }
 
           const marketsData = await polymarketService.getMarkets({
-            limit: 200,
+            limit: 1000, // Increased limit for better results after client-side filtering
             active: true,
-            closed: false,
+            closed: false, // We'll fetch closed markets separately and combine them
+            order: 'endDate', // Sort by endDate
+            ascending: true, // Ascending order (earliest dates first)
           })
-          setMarkets(marketsData)
-          // Cache the results
-          categoryCacheRef.current['Trending'] = marketsData
+          
+          // Also fetch closed markets to show at the bottom
+          const closedMarketsData = await polymarketService.getMarkets({
+            limit: 100, // Fewer closed markets needed
+            active: true,
+            closed: true, // Get closed markets
+            order: 'endDate', // Sort by endDate
+            ascending: true, // Ascending order (earliest dates first)
+          })
+          
+          // Combine open and closed markets (will be sorted by sortMarkets function)
+          const allMarkets = [...marketsData, ...closedMarketsData]
+          setMarkets(allMarkets)
+          // Cache the results (before sorting, so we can restore them)
+          categoryCacheRef.current['Trending'] = allMarkets
         } else {
-          // For specific categories, fetch fresh data and filter
+          // For specific categories, fetch fresh data using API parameters
           // Check cache first
           if (categoryCacheRef.current[selectedCategory]) {
             setMarkets(categoryCacheRef.current[selectedCategory])
@@ -81,24 +176,115 @@ export default function MarketsList({ onSelectMarket }) {
             return
           }
 
-          // Get category keywords for filtering
+          // Get Polymarket API parameters for this category
+          const apiParams = categoryApiMap[selectedCategory]
           const categoryKeywords = categoryMap[selectedCategory] || []
-          if (categoryKeywords.length === 0) {
+          
+          if (!apiParams && categoryKeywords.length === 0) {
             setMarkets([])
             setLoading(false)
             return
           }
 
-          // Fetch fresh markets (we'll filter client-side since Polymarket API
-          // may not support category filtering directly)
-          const marketsData = await polymarketService.getMarkets({
-            limit: 200,
+          // Build API options for open markets
+          const apiOptions = {
+            limit: 1000,
             active: true,
-            closed: false,
-          })
+            closed: false, // Get open markets first
+            order: 'endDate', // Sort by endDate
+            ascending: true, // Ascending order (earliest dates first)
+            // Add category name for debugging/visibility
+            _category: selectedCategory.toLowerCase(),
+          }
           
-          // Filter markets for this category
-          const filtered = marketsData.filter(market => {
+          // Also build options for closed markets
+          const closedApiOptions = {
+            ...apiOptions,
+            closed: true, // Get closed markets
+            limit: 100, // Fewer closed markets needed
+          }
+          
+          // For Sports category, use sports tag IDs for server-side filtering
+          if (selectedCategory === 'Sports') {
+            try {
+              // Get sports tag IDs (cache them)
+              if (!sportsTagIdsRef.current) {
+                const sports = await polymarketService.getSports()
+                // Get all unique tag IDs from all sports
+                const allTagIds = new Set()
+                sports.forEach(sport => {
+                  if (sport.tags) {
+                    const tagIds = typeof sport.tags === 'string' 
+                      ? sport.tags.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+                      : Array.isArray(sport.tags) 
+                        ? sport.tags.map(id => parseInt(id)).filter(id => !isNaN(id))
+                        : []
+                    tagIds.forEach(id => allTagIds.add(id))
+                  }
+                })
+                sportsTagIdsRef.current = Array.from(allTagIds)
+                console.log(`[Sports] Found ${sportsTagIdsRef.current.length} unique tag IDs from sports metadata`)
+              }
+              
+              if (sportsTagIdsRef.current.length > 0) {
+                // TESTING: Use single tag_id for now (first one)
+                const singleTagId = sportsTagIdsRef.current[0]
+                apiOptions.tag_id = singleTagId
+                apiOptions.related_tags = true // Include related tags
+                console.log(`[Sports] Using single tag_id for testing: ${singleTagId} (from ${sportsTagIdsRef.current.length} available)`)
+              }
+            } catch (err) {
+              console.warn('Error fetching sports tag IDs, falling back to client-side filtering:', err)
+            }
+          } else {
+            // For non-sports categories, try to find tag IDs from tags API
+            const categoryTagIds = findTagIdsForCategory(selectedCategory)
+            if (categoryTagIds.length > 0) {
+              // Use all matched tag IDs for server-side filtering
+              apiOptions.tag_id = categoryTagIds
+              apiOptions.related_tags = true // Include related tags
+              console.log(`[${selectedCategory}] Using ${categoryTagIds.length} tag IDs for server-side filtering:`, categoryTagIds)
+            } else {
+              console.log(`[${selectedCategory}] No tag IDs found, will use client-side filtering`)
+            }
+          }
+          
+          // Add other API-specific parameters if available
+          if (apiParams) {
+            if (apiParams.sports_market_types && Array.isArray(apiParams.sports_market_types) && apiParams.sports_market_types.length > 0) {
+              apiOptions.sports_market_types = apiParams.sports_market_types
+            }
+            if (apiParams.tag_id) {
+              apiOptions.tag_id = apiParams.tag_id
+            }
+          }
+
+          // Fetch open markets (with server-side filtering if tag_id is available)
+          const marketsData = await polymarketService.getMarkets(apiOptions)
+          
+          // Also fetch closed markets for this category (apply same filters)
+          let closedMarketsData = []
+          try {
+            // Apply same tag_id filters to closed markets
+            if (apiOptions.tag_id) {
+              closedApiOptions.tag_id = apiOptions.tag_id
+              closedApiOptions.related_tags = apiOptions.related_tags
+            }
+            closedMarketsData = await polymarketService.getMarkets(closedApiOptions)
+          } catch (err) {
+            console.warn('Error fetching closed markets:', err)
+            // Continue without closed markets
+          }
+          
+          // Combine open and closed markets
+          const allMarketsData = [...marketsData, ...closedMarketsData]
+          
+          // Client-side filtering by category keywords (as fallback or additional filter)
+          const filtered = allMarketsData.filter(market => {
+            if (categoryKeywords.length === 0) {
+              return true
+            }
+            
             const marketCategory = market.category?.toLowerCase() || ''
             const marketTitle = market.title?.toLowerCase() || ''
             const marketDescription = market.description?.toLowerCase() || ''
@@ -126,6 +312,48 @@ export default function MarketsList({ onSelectMarket }) {
     fetchMarkets()
   }, [selectedCategory]) // Re-fetch when category changes
 
+  // Handle search queries using public-search endpoint
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!searchQuery || searchQuery.trim().length === 0) {
+        // If search is cleared, restore markets for current category
+        if (categoryCacheRef.current[selectedCategory]) {
+          setMarkets(categoryCacheRef.current[selectedCategory])
+        }
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError(null)
+
+        console.log(`[Search] Searching for: "${searchQuery}"`)
+        const searchResults = await polymarketService.searchMarkets(searchQuery, {
+          limit_per_type: 50, // Limit results per type (markets, events, etc.)
+          search_tags: true, // Search in tags
+          search_profiles: false, // Don't search profiles for now
+          sort: 'relevance', // Sort by relevance
+        })
+
+        setMarkets(searchResults)
+        console.log(`[Search] Displaying ${searchResults.length} search results`)
+      } catch (err) {
+        console.error('Error searching markets:', err)
+        setError(err.message || 'Search failed')
+        setMarkets([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // Debounce search to avoid too many API calls
+    const timeoutId = setTimeout(() => {
+      performSearch()
+    }, 500) // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, selectedCategory]) // Re-search when query or category changes
+
   const formatPrice = (price) => {
     if (price >= 100) return '100.0¢'
     if (price <= 0) return '0.0¢'
@@ -148,13 +376,58 @@ export default function MarketsList({ onSelectMarket }) {
     return Math.abs(yesPrice - noPrice)
   }
 
-  // Filter markets by search query only (category filtering is done via API/cache)
-  const filteredMarkets = markets.filter(market => {
-    if (!searchQuery) return true
-    
-    return market.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           market.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  })
+  /**
+   * Sort markets: open markets first, then closed markets
+   * Within each group, sort by endDate (ascending - earliest dates first)
+   */
+  const sortMarkets = (marketsArray) => {
+    if (!Array.isArray(marketsArray) || marketsArray.length === 0) {
+      return marketsArray
+    }
+
+    // Separate open and closed markets
+    const openMarkets = []
+    const closedMarkets = []
+
+    marketsArray.forEach(market => {
+      const isClosed = market.closed === true || market.closed === 'true' || 
+                      (market.polymarketData && market.polymarketData.closed === true)
+      
+      if (isClosed) {
+        closedMarkets.push(market)
+      } else {
+        openMarkets.push(market)
+      }
+    })
+
+    // Sort function: by endDate (ascending - earliest first)
+    const sortByEndDate = (a, b) => {
+      const dateA = a.endDate ? new Date(a.endDate).getTime() : Infinity
+      const dateB = b.endDate ? new Date(b.endDate).getTime() : Infinity
+      
+      // If both have dates, sort ascending (earliest first)
+      if (dateA !== Infinity && dateB !== Infinity) {
+        return dateA - dateB
+      }
+      // Markets without dates go to the end
+      if (dateA === Infinity && dateB === Infinity) return 0
+      if (dateA === Infinity) return 1
+      if (dateB === Infinity) return -1
+      return 0
+    }
+
+    // Sort each group by endDate
+    openMarkets.sort(sortByEndDate)
+    closedMarkets.sort(sortByEndDate)
+
+    // Return open markets first, then closed markets
+    return [...openMarkets, ...closedMarkets]
+  }
+
+  // When search is active, use search results directly (no additional filtering needed)
+  // When no search, use markets from category
+  // Sort markets: open first, then closed, both sorted by endDate
+  const filteredMarkets = sortMarkets(markets)
 
   if (loading) {
     return (
@@ -193,7 +466,11 @@ export default function MarketsList({ onSelectMarket }) {
       <div className="sticky top-0 z-50 bg-black border-b border-gray-800 px-6 py-4">
         <div className="max-w-[1920px] mx-auto">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-white">{filteredMarkets.length} Markets</h1>
+            <h1 className="text-2xl font-bold text-white">
+              {searchQuery 
+                ? `Search: "${searchQuery}" (${filteredMarkets.length} results)`
+                : `${filteredMarkets.length} Markets`}
+            </h1>
             <div className="flex items-center gap-4">
               {/* View Toggle */}
               <div className="flex items-center gap-1 bg-gray-900 border border-gray-700 rounded-lg p-1">
