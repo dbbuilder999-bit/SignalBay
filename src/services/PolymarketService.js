@@ -2,8 +2,19 @@
  * Polymarket Service
  * Fetches real prediction market data from Polymarket API
  * 
- * Polymarket API Documentation:
+ * Polymarket Gamma API Documentation:
  * - Markets API: https://docs.polymarket.com/developers/gamma-markets-api/get-markets
+ * - Events API: /events (currently implemented)
+ * - Sports API: /sports (not yet implemented)
+ * - Tags API: /tags (not yet implemented)
+ * - Health API: /health (not yet implemented)
+ * 
+ * Currently using:
+ * - /markets endpoint for fetching markets
+ * - /events endpoint for fetching events
+ * 
+ * TODO: Consider implementing /sports, /tags, and /health endpoints for richer data
+ * 
  * - No authentication required for reading market data (public API)
  * - Authentication only needed for trading (placing orders)
  * 
@@ -40,12 +51,50 @@ class PolymarketService {
    */
   async getMarkets(options = {}) {
     try {
-      const cacheKey = `markets-${JSON.stringify(options)}`
-      const cached = this.cache.get(cacheKey)
+      debugger // Moved to top so it's always hit when getMarkets is called
       
-      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-        return cached.data
-      }
+      // CACHE DISABLED - Always fetch fresh data
+      // Check cache - if we have a cached result with same or larger limit, use it
+      // const requestedLimit = options.limit || 20
+      // let cached = null
+      // let cacheKey = null
+      
+      // Try to find a cached result that satisfies our request
+      // Look for any cache entry with same active/closed settings and sufficient limit
+      // const activeFilter = options.active !== false
+      // const closedFilter = options.closed !== undefined ? options.closed : false
+      
+      // for (const [key, value] of this.cache.entries()) {
+      //   if (key.startsWith('markets-')) {
+      //     try {
+      //       const cachedOptions = JSON.parse(key.replace('markets-', ''))
+      //       const cachedLimit = cachedOptions.limit || 20
+      //       const cachedActive = cachedOptions.active !== false
+      //       const cachedClosed = cachedOptions.closed !== undefined ? cachedOptions.closed : false
+      //       
+      //       // If cached limit is >= requested limit and other options match, use it
+      //       if (cachedLimit >= requestedLimit && 
+      //           cachedActive === activeFilter &&
+      //           cachedClosed === closedFilter &&
+      //           Date.now() - value.timestamp < this.cacheTimeout) {
+      //         console.log(`[Cache HIT] Using cached data: ${key} (requested limit: ${requestedLimit})`)
+      //         // Return a slice if we need fewer items
+      //         if (cachedLimit > requestedLimit) {
+      //           return value.data.slice(0, requestedLimit)
+      //         }
+      //         return value.data
+      //       }
+      //     } catch (e) {
+      //       // Skip invalid cache keys
+      //       continue
+      //     }
+      //   }
+      // }
+      
+      console.log(`[Cache DISABLED] Fetching fresh data for limit: ${options.limit || 20}, active: ${options.active !== false}, closed: ${options.closed || false}`)
+      
+      // If no suitable cache found, create new cache key
+      const cacheKey = `markets-${JSON.stringify(options)}`
 
       // Polymarket Gamma Markets API endpoint
       // Documentation: https://docs.polymarket.com/developers/gamma-markets-api/get-markets
@@ -57,8 +106,8 @@ class PolymarketService {
         ...(options.category && { category: options.category }),
         ...(options.tokens && { tokens: options.tokens }),
       })
-
       // Try the Gamma Markets API endpoint (uses proxy in dev, direct in prod)
+      debugger
       const response = await fetch(
         `${this.apiUrl}/markets?${params.toString()}`,
         {
@@ -72,8 +121,8 @@ class PolymarketService {
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`Polymarket API error: ${response.status}`, errorText)
-        // Try alternative endpoint or return fallback
-        return this.getFallbackMarkets()
+        // Throw error instead of returning fallback - we want REAL data only
+        throw new Error(`Polymarket API error: ${response.status} - ${errorText}`)
       }
 
       const data = await response.json()
@@ -85,23 +134,25 @@ class PolymarketService {
       
       if (!marketsData || marketsData.length === 0) {
         console.warn('No markets data found in response')
-        return this.getFallbackMarkets()
+        // Return empty array instead of fallback - we want REAL data only
+        return []
       }
       
       const markets = this.transformMarkets(marketsData)
       console.log('Transformed markets:', markets.length, 'items')
 
+      // CACHE DISABLED - Don't cache results
       // Cache the result
-      this.cache.set(cacheKey, {
-        data: markets,
-        timestamp: Date.now(),
-      })
+      // this.cache.set(cacheKey, {
+      //   data: markets,
+      //   timestamp: Date.now(),
+      // })
 
-      return markets.length > 0 ? markets : this.getFallbackMarkets()
+      return markets.length > 0 ? markets : []
     } catch (error) {
       console.error('Error fetching Polymarket markets:', error)
-      // Return fallback mock data on error
-      return this.getFallbackMarkets()
+      // Throw error instead of returning fallback - we want REAL data only
+      throw error
     }
   }
 
@@ -235,6 +286,16 @@ class PolymarketService {
                         market.groupItemTitle ||
                         'general'
         const icon = this.getIconForCategory(category)
+        
+        // Get image URL (Polymarket may provide imageUrl, image, thumbnail, etc.)
+        const imageUrl = market.imageUrl || 
+                        market.image || 
+                        market.thumbnail || 
+                        market.image_url ||
+                        market.thumbnailUrl ||
+                        market.thumbnail_url ||
+                        (market.events && market.events[0]?.imageUrl) ||
+                        null
 
         // Get title
         const title = market.question || 
@@ -276,6 +337,7 @@ class PolymarketService {
         return {
           id: conditionId,
           icon: icon,
+          imageUrl: imageUrl,
           title: title,
           description: description,
           yesPrice: Math.max(0.1, Math.min(99.9, yesPrice)),
@@ -616,12 +678,13 @@ class PolymarketService {
    */
   async getEvents(options = {}) {
     try {
-      const cacheKey = `events-${JSON.stringify(options)}`
-      const cached = this.cache.get(cacheKey)
-      
-      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-        return cached.data
-      }
+      // CACHE DISABLED - Always fetch fresh data
+      // const cacheKey = `events-${JSON.stringify(options)}`
+      // const cached = this.cache.get(cacheKey)
+      // 
+      // if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      //   return cached.data
+      // }
 
       // Polymarket Events API endpoint
       const params = new URLSearchParams({
@@ -651,11 +714,12 @@ class PolymarketService {
       // Handle different response formats
       const eventsData = Array.isArray(data) ? data : (data.data || data.events || [])
 
+      // CACHE DISABLED - Don't cache results
       // Cache the result
-      this.cache.set(cacheKey, {
-        data: eventsData,
-        timestamp: Date.now(),
-      })
+      // this.cache.set(cacheKey, {
+      //   data: eventsData,
+      //   timestamp: Date.now(),
+      // })
 
       return eventsData
     } catch (error) {

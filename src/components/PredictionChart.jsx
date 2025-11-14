@@ -1,12 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createChart, ColorType } from 'lightweight-charts'
 import { polymarketService } from '../services/PolymarketService'
-import { marketDataService } from '../services/MarketDataService'
-import { DATA_SOURCE } from '../config/dataConfig'
 
-// Select data service based on configuration
-const dataService = 
-  DATA_SOURCE === 'polymarket' ? polymarketService : marketDataService
+// Always use Polymarket service for real data
+const dataService = polymarketService
 
 export default function PredictionChart({ market }) {
   const chartContainerRef = useRef()

@@ -1,12 +1,8 @@
 /**
  * Data Configuration
  * SignalBay uses Polymarket as the source of truth for prediction market data
+ * Always uses real Polymarket data - no fallback to mock data
  */
-
-// Data source options:
-// 'polymarket' - Real Polymarket prediction markets (SOURCE OF TRUTH)
-// 'mock' - Mock/simulated data (fallback)
-export const DATA_SOURCE = 'polymarket' // 'polymarket' | 'mock'
 
 // Polymarket API Configuration
 // NOTE: Reading market data does NOT require authentication (public API)

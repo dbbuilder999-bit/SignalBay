@@ -2,6 +2,24 @@ import React, { useState } from 'react'
 import { Search, Sun, Moon } from 'lucide-react'
 import TruncatedText from './TruncatedText'
 
+// Component to handle market images with fallback to icon
+function MarketImage({ src, alt, fallbackIcon }) {
+  const [imageError, setImageError] = useState(false)
+
+  if (imageError && fallbackIcon) {
+    return <span className="text-2xl flex-shrink-0">{fallbackIcon}</span>
+  }
+
+  return (
+    <img 
+      src={src} 
+      alt={alt}
+      className="w-10 h-10 rounded object-cover flex-shrink-0"
+      onError={() => setImageError(true)}
+    />
+  )
+}
+
 export default function MarketSidebar({ markets, selectedMarket, onSelectMarket, activeTab, onTabChange, darkMode, onToggleDarkMode }) {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -66,7 +84,15 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
             }`}
           >
             <div className="flex items-start gap-3 mb-2">
-              <span className="text-2xl">{market.icon}</span>
+              {market.imageUrl ? (
+                <MarketImage 
+                  src={market.imageUrl} 
+                  alt={market.title || 'Market'}
+                  fallbackIcon={market.icon}
+                />
+              ) : market.icon ? (
+                <span className="text-2xl flex-shrink-0">{market.icon}</span>
+              ) : null}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate">{market.title}</p>
                 <TruncatedText 

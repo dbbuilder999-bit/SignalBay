@@ -8,12 +8,9 @@ import MarketsList from './components/MarketsList'
 import TruncatedText from './components/TruncatedText'
 // Polymarket is the source of truth for market data
 import { polymarketService } from './services/PolymarketService'
-import { marketDataService } from './services/MarketDataService'
-import { DATA_SOURCE } from './config/dataConfig'
 
-// Select data service based on configuration
-const dataService = 
-  DATA_SOURCE === 'polymarket' ? polymarketService : marketDataService
+// Always use Polymarket service for real data
+const dataService = polymarketService
 
 export default function SignalBay() {
   const [showEvents, setShowEvents] = useState(true) // Show events list by default
@@ -23,12 +20,19 @@ export default function SignalBay() {
   const [darkMode, setDarkMode] = useState(true)
   const [loading, setLoading] = useState(true)
 
-  // Fetch markets on mount
+  // Fetch markets on mount (only when not showing events list, since MarketsList handles its own data)
   useEffect(() => {
+    // Don't fetch if showing events list - MarketsList handles its own data fetching
+    if (showEvents) {
+      setLoading(false)
+      return
+    }
+
     const fetchMarkets = async () => {
       try {
         setLoading(true)
-        const marketData = await dataService.getMarkets()
+        // Use same limit as MarketsList to leverage cache
+        const marketData = await dataService.getMarkets({ limit: 200, active: true, closed: false })
         setMarkets(marketData)
         if (marketData.length > 0 && !selectedMarket) {
           setSelectedMarket(marketData[0])
@@ -41,7 +45,7 @@ export default function SignalBay() {
     }
 
     fetchMarkets()
-  }, [])
+  }, [showEvents])
 
   // Subscribe to price updates for selected market
   useEffect(() => {
@@ -89,7 +93,11 @@ export default function SignalBay() {
       <nav className="sticky top-0 z-50 bg-[#0a0d14] border-b border-white/10 px-6 py-4">
         <div className="flex justify-between items-center max-w-[1920px] mx-auto">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold text-yellow-400">SignalBay</h1>
+            <img 
+              src="/assets/signalbay-logo.png" 
+              alt="SignalBay" 
+              className="h-16 w-auto"
+            />
             <div className="flex items-center gap-6">
               <button
                 onClick={() => setShowEvents(true)}
