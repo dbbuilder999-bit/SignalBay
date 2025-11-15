@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Star, Twitter } from 'lucide-react'
+import { Search, Star, Twitter, Sparkles } from 'lucide-react'
 import MarketSidebar from './components/MarketSidebar'
 import PredictionChart from './components/PredictionChart'
 import TradingTabs from './components/TradingTabs'
 import OrderPanel from './components/OrderPanel'
 import MarketsList from './components/MarketsList'
 import EventsList from './components/EventsList'
+import AnalyzeView from './components/AnalyzeView'
 import TruncatedText from './components/TruncatedText'
 import LandingPage from './components/LandingPage'
 import LoginModal from './components/LoginModal'
@@ -59,7 +60,7 @@ export default function SignalBay() {
       return true
     }
   })
-  const [viewMode, setViewMode] = useState('markets') // 'events' | 'markets' | 'trade'
+  const [viewMode, setViewMode] = useState('markets') // 'events' | 'markets' | 'trade' | 'analyze'
   const [selectedMarket, setSelectedMarket] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null) // Track selected event for filtering markets
   const [markets, setMarkets] = useState([])
@@ -267,6 +268,17 @@ export default function SignalBay() {
                 Markets
               </button>
               <button
+                onClick={() => setViewMode('analyze')}
+                className={`transition text-sm flex items-center gap-1.5 ${
+                  viewMode === 'analyze'
+                    ? 'text-white font-semibold'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                <Sparkles className="h-4 w-4" />
+                Analyze
+              </button>
+              <button
                 onClick={() => setViewMode('trade')}
                 className={`transition text-sm ${
                   viewMode === 'trade'
@@ -307,7 +319,20 @@ export default function SignalBay() {
         </div>
       </nav>
 
-      {viewMode === 'events' ? (
+      {viewMode === 'analyze' ? (
+        <AnalyzeView 
+          onSelectMarket={(market) => {
+            // Add market to markets list if not already present
+            setMarkets(prev => {
+              const exists = prev.find(m => m.id === market.id)
+              if (exists) return prev
+              return [market, ...prev]
+            })
+            setSelectedMarket(market)
+            setViewMode('trade')
+          }}
+        />
+      ) : viewMode === 'events' ? (
         <EventsList 
           onSelectEvent={async (event) => {
             // When an event is clicked, fetch markets for that event
