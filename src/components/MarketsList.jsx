@@ -225,6 +225,8 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
     liquidity: null,
     endDate: null,
   })
+  const [selectedSport, setSelectedSport] = useState('NFL') // Selected sport when Sports category is active
+  const [sportsMarketsBySport, setSportsMarketsBySport] = useState({}) // Markets grouped by sport
   const categoryCacheRef = useRef({}) // Cache markets by category using ref to avoid dependency issues
   const sportsTagIdsRef = useRef(null) // Cache sports tag IDs
   const tagsRef = useRef(null) // Cache tags data for category-to-tag_id mapping
@@ -592,6 +594,89 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
     return () => clearTimeout(timeoutId)
   }, [searchQuery, selectedCategory]) // Re-search when query or category changes
 
+  // Sport-specific tag IDs and keywords (defined here to avoid hook order issues)
+  const SPORT_TAG_IDS = {
+    NFL: 517,
+    CFB: 518,
+    NBA: 780
+  }
+
+  const SPORT_KEYWORDS = {
+    NFL: ['nfl', 'national football league', 'super bowl', 'afc', 'nfc', 'nfl team', 'nfl player'],
+    CFB: ['cfb', 'college football', 'ncaa football', 'ncaa', 'college', 'cfp', 'college football playoff'],
+    NBA: ['nba', 'national basketball association', 'nba team', 'nba player', 'nba game', 'nba playoff']
+  }
+
+  const sportIcons = {
+    NFL: '🏈',
+    CFB: '🏈',
+    NBA: '🏀'
+  }
+
+  const sportColors = {
+    NFL: 'bg-blue-500/20 border-blue-500/50 text-blue-400',
+    CFB: 'bg-orange-500/20 border-orange-500/50 text-orange-400',
+    NBA: 'bg-purple-500/20 border-purple-500/50 text-purple-400'
+  }
+
+  // Fetch sports markets when Sports category is selected
+  useEffect(() => {
+    if (selectedCategory === 'Sports' && !eventFilter && !searchQuery) {
+      const fetchSportsMarkets = async () => {
+        try {
+          const sportPromises = Object.entries(SPORT_TAG_IDS).map(async ([sport, tagId]) => {
+            try {
+              const sportMarkets = await polymarketService.getMarkets({
+                tag_id: tagId,
+                active: true,
+                closed: false,
+                limit: 200,
+                related_tags: false
+              })
+              
+              // Filter markets to ensure they're actually for this sport
+              const keywords = SPORT_KEYWORDS[sport]
+              const filtered = (sportMarkets || []).filter(market => {
+                const title = (market.title || market.question || '').toLowerCase()
+                const description = (market.description || '').toLowerCase()
+                const searchText = `${title} ${description}`
+                return keywords.some(keyword => searchText.includes(keyword))
+              })
+              
+              return { sport, markets: filtered }
+            } catch (err) {
+              console.error(`Error fetching ${sport} markets:`, err)
+              return { sport, markets: [] }
+            }
+          })
+
+          const results = await Promise.all(sportPromises)
+          const grouped = {}
+          results.forEach(({ sport, markets }) => {
+            grouped[sport] = markets
+          })
+          setSportsMarketsBySport(grouped)
+          
+          // Set markets to selected sport
+          if (grouped[selectedSport]) {
+            setMarkets(grouped[selectedSport])
+          }
+        } catch (err) {
+          console.error('Error fetching sports markets:', err)
+        }
+      }
+
+      fetchSportsMarkets()
+    }
+  }, [selectedCategory, eventFilter, searchQuery, selectedSport])
+
+  // Update markets when sport selection changes
+  useEffect(() => {
+    if (selectedCategory === 'Sports' && sportsMarketsBySport[selectedSport]) {
+      setMarkets(sportsMarketsBySport[selectedSport])
+    }
+  }, [selectedSport, sportsMarketsBySport, selectedCategory])
+
   const formatPrice = (price) => {
     if (price >= 100) return '100.0¢'
     if (price <= 0) return '0.0¢'
@@ -745,6 +830,7 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
     )
   }
 
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
@@ -766,7 +852,9 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                   ? `${eventFilter.title || eventFilter.question || eventFilter.name || 'Event'} Markets (${filteredMarkets.length})`
                   : searchQuery 
                     ? `Search: "${searchQuery}" (${filteredMarkets.length} results)`
-                    : `${filteredMarkets.length} Markets`}
+                    : selectedCategory === 'Sports'
+                      ? `${selectedSport} Markets (${filteredMarkets.length})`
+                      : `${filteredMarkets.length} Markets`}
               </h1>
             </div>
             <div className="flex items-center gap-4">
@@ -827,23 +915,47 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
             </div>
           </div>
 
-          {/* Category Filters */}
+          {/* Category Filters or Sport Tabs */}
           <div className="mt-4">
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
-              {categories.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                    selectedCategory === category
-                      ? 'bg-yellow-500 text-black border-2 border-yellow-500'
-                      : 'bg-gray-900 text-gray-300 border border-gray-700 hover:bg-gray-800'
-                  }`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
+            {selectedCategory === 'Sports' && !eventFilter && !searchQuery ? (
+              // Sport tabs when Sports category is selected
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                {Object.keys(SPORT_TAG_IDS).map(sport => (
+                  <button
+                    key={sport}
+                    onClick={() => setSelectedSport(sport)}
+                    className={`px-6 py-3 rounded-lg text-sm font-semibold whitespace-nowrap transition ${
+                      selectedSport === sport
+                        ? `${sportColors[sport]} border-2`
+                        : 'bg-gray-900 text-gray-300 border border-gray-700 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-xl mr-2">{sportIcons[sport]}</span>
+                    {sport}
+                    <span className="ml-2 text-xs opacity-75">
+                      ({sportsMarketsBySport[sport]?.length || 0})
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              // Category filters for other categories
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
+                      selectedCategory === category
+                        ? 'bg-yellow-500 text-black border-2 border-yellow-500'
+                        : 'bg-gray-900 text-gray-300 border border-gray-700 hover:bg-gray-800'
+                    }`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

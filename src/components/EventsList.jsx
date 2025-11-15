@@ -4,12 +4,14 @@ import { polymarketService } from '../services/PolymarketService'
 
 const eventTabs = ['All', 'Most Traded', 'Watchlist']
 
-export default function EventsList({ onSelectEvent }) {
+export default function EventsList({ onSelectEvent, eventWatchlist = [], toggleEventWatchlist, isEventInWatchlist }) {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('All')
-  const [eventWatchlist, setEventWatchlist] = useState(() => {
+  
+  // Use props if provided, otherwise fall back to local state (for backward compatibility)
+  const [localEventWatchlist, setLocalEventWatchlist] = useState(() => {
     // Load event watchlist from localStorage on mount
     try {
       const saved = localStorage.getItem('signalbay-event-watchlist')
@@ -18,6 +20,34 @@ export default function EventsList({ onSelectEvent }) {
       return []
     }
   })
+  
+  // Use props if provided, otherwise use local state
+  // Check if props are provided (check for function existence)
+  const hasProps = typeof toggleEventWatchlist === 'function'
+  
+  // Use the current prop value if props are provided, otherwise use local state
+  // This will be recomputed on every render when props change
+  const currentWatchlist = hasProps ? eventWatchlist : localEventWatchlist
+  
+  const effectiveToggle = hasProps ? toggleEventWatchlist : ((eventId, e) => {
+    if (e && e.stopPropagation) {
+      e.stopPropagation()
+    }
+    setLocalEventWatchlist(prev => {
+      if (prev.includes(eventId)) {
+        return prev.filter(id => id !== eventId)
+      } else {
+        return [...prev, eventId]
+      }
+    })
+  })
+  
+  // Use prop function if available, otherwise check against current watchlist
+  const effectiveIsInWatchlist = hasProps && typeof isEventInWatchlist === 'function' 
+    ? isEventInWatchlist 
+    : ((eventId) => {
+        return currentWatchlist.includes(eventId)
+      })
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -42,38 +72,26 @@ export default function EventsList({ onSelectEvent }) {
     fetchEvents()
   }, [])
 
-  // Save event watchlist to localStorage whenever it changes
+  // Save local event watchlist to localStorage whenever it changes (only if not using props)
   useEffect(() => {
-    try {
-      localStorage.setItem('signalbay-event-watchlist', JSON.stringify(eventWatchlist))
-    } catch (error) {
-      console.error('Error saving event watchlist to localStorage:', error)
-    }
-  }, [eventWatchlist])
-
-  // Toggle event in watchlist
-  const toggleEventWatchlist = (eventId, e) => {
-    e.stopPropagation() // Prevent event card click
-    setEventWatchlist(prev => {
-      if (prev.includes(eventId)) {
-        return prev.filter(id => id !== eventId)
-      } else {
-        return [...prev, eventId]
+    if (!hasProps) {
+      try {
+        localStorage.setItem('signalbay-event-watchlist', JSON.stringify(localEventWatchlist))
+      } catch (error) {
+        console.error('Error saving event watchlist to localStorage:', error)
       }
-    })
-  }
-
-  // Check if event is in watchlist
-  const isInWatchlist = (eventId) => {
-    return eventWatchlist.includes(eventId)
-  }
+    }
+  }, [localEventWatchlist, hasProps])
 
   // Filter and sort events based on active tab
   const getFilteredEvents = () => {
     let filtered = [...events]
 
     if (activeTab === 'Watchlist') {
-      filtered = filtered.filter(event => isInWatchlist(event.id))
+      filtered = filtered.filter(event => {
+        const eventId = event.id || event.slug || event.title
+        return effectiveIsInWatchlist(eventId)
+      })
     } else if (activeTab === 'Most Traded') {
       // Sort by volume (24hr volume first, then total volume) - most traded first
       filtered.sort((a, b) => {
@@ -210,23 +228,27 @@ export default function EventsList({ onSelectEvent }) {
               
               return (
               <div
-                key={event.id}
+                key={event.id || `event-${event.slug || event.title || Math.random()}`}
                 onClick={() => onSelectEvent && onSelectEvent(event)}
                 className="bg-gray-900 border border-gray-800 rounded-lg p-6 hover:border-yellow-500/50 hover:bg-gray-800/50 transition cursor-pointer relative"
               >
                 {/* Watchlist Button */}
                 <button
-                  onClick={(e) => toggleEventWatchlist(event.id, e)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const eventId = event.id || event.slug || event.title
+                    effectiveToggle(eventId, e)
+                  }}
                   className={`absolute top-4 right-4 p-2 rounded-lg transition z-10 ${
-                    isInWatchlist(event.id)
+                    effectiveIsInWatchlist(event.id || event.slug || event.title)
                       ? 'bg-yellow-500/20 hover:bg-yellow-500/30'
                       : 'bg-gray-800/50 hover:bg-gray-700/50'
                   }`}
-                  title={isInWatchlist(event.id) ? 'Remove from watchlist' : 'Add to watchlist'}
+                  title={effectiveIsInWatchlist(event.id || event.slug || event.title) ? 'Remove from watchlist' : 'Add to watchlist'}
                 >
                   <Star 
                     className={`h-5 w-5 transition ${
-                      isInWatchlist(event.id)
+                      effectiveIsInWatchlist(event.id || event.slug || event.title)
                         ? 'text-yellow-400 fill-yellow-400'
                         : 'text-gray-400'
                     }`} 

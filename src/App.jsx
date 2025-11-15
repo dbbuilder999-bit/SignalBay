@@ -76,6 +76,15 @@ export default function SignalBay() {
       return []
     }
   })
+  const [eventWatchlist, setEventWatchlist] = useState(() => {
+    // Load event watchlist from localStorage on mount
+    try {
+      const saved = localStorage.getItem('signalbay-event-watchlist')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
   const [showRulesModal, setShowRulesModal] = useState(false)
   const [loadingMarket, setLoadingMarket] = useState(false)
 
@@ -146,6 +155,33 @@ export default function SignalBay() {
     }
   }, [watchlist])
 
+  // Save event watchlist to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('signalbay-event-watchlist', JSON.stringify(eventWatchlist))
+    } catch (error) {
+      console.error('Error saving event watchlist to localStorage:', error)
+    }
+  }, [eventWatchlist])
+
+  // Listen for localStorage changes to sync watchlists across browser tabs/windows
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'signalbay-event-watchlist') {
+        try {
+          const saved = e.newValue ? JSON.parse(e.newValue) : []
+          setEventWatchlist(saved)
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [])
+
   // Toggle market in watchlist
   const toggleWatchlist = (marketId) => {
     setWatchlist(prev => {
@@ -160,6 +196,25 @@ export default function SignalBay() {
   // Check if market is in watchlist
   const isInWatchlist = (marketId) => {
     return watchlist.includes(marketId)
+  }
+
+  // Toggle event in watchlist
+  const toggleEventWatchlist = (eventId, e) => {
+    // Optional: stop propagation if event is provided
+    if (e && e.stopPropagation) {
+      e.stopPropagation()
+    }
+    setEventWatchlist(prev => {
+      const newList = prev.includes(eventId)
+        ? prev.filter(id => id !== eventId)
+        : [...prev, eventId]
+      return newList
+    })
+  }
+
+  // Check if event is in watchlist
+  const isEventInWatchlist = (eventId) => {
+    return eventWatchlist.includes(eventId)
   }
 
   // Subscribe to price updates for selected market
@@ -359,6 +414,9 @@ export default function SignalBay() {
         />
       ) : viewMode === 'events' ? (
         <EventsList 
+          eventWatchlist={eventWatchlist}
+          toggleEventWatchlist={toggleEventWatchlist}
+          isEventInWatchlist={isEventInWatchlist}
           onSelectEvent={async (event) => {
             // When an event is clicked, fetch markets for that event
             try {
@@ -417,6 +475,7 @@ export default function SignalBay() {
                   if (exists) return prev
                   return [market, ...prev]
                 })
+                setSelectedEvent(event) // Set selected event so it can be added to watchlist
                 setSelectedMarket(market)
                 setViewMode('trade')
               } else if (eventMarkets.length > 1) {
@@ -612,7 +671,7 @@ export default function SignalBay() {
                     ? 'bg-yellow-500/20 hover:bg-yellow-500/30'
                     : 'hover:bg-white/5'
                 }`}
-                title={selectedMarket && isInWatchlist(selectedMarket.id) ? 'Remove from watchlist' : 'Add to watchlist'}
+                title={selectedMarket && isInWatchlist(selectedMarket.id) ? 'Remove market from watchlist' : 'Add market to watchlist'}
               >
                 <Star 
                   className={`h-5 w-5 transition ${
@@ -622,6 +681,30 @@ export default function SignalBay() {
                   }`} 
                 />
               </button>
+              {selectedEvent && (
+                <button 
+                  onClick={() => {
+                    if (selectedEvent) {
+                      const eventId = selectedEvent.id || selectedEvent.slug || selectedEvent.title
+                      toggleEventWatchlist(eventId)
+                    }
+                  }}
+                  className={`p-2 rounded-lg transition ${
+                    selectedEvent && isEventInWatchlist(selectedEvent.id || selectedEvent.slug || selectedEvent.title)
+                      ? 'bg-yellow-500/20 hover:bg-yellow-500/30'
+                      : 'hover:bg-white/5'
+                  }`}
+                  title={selectedEvent && isEventInWatchlist(selectedEvent.id || selectedEvent.slug || selectedEvent.title) ? 'Remove event from watchlist' : 'Add event to watchlist'}
+                >
+                  <Star 
+                    className={`h-5 w-5 transition ${
+                      selectedEvent && isEventInWatchlist(selectedEvent.id || selectedEvent.slug || selectedEvent.title)
+                        ? 'text-yellow-400 fill-yellow-400'
+                        : 'text-gray-400'
+                    }`} 
+                  />
+                </button>
+              )}
                   </div>
                 </div>
               </div>
