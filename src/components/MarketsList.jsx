@@ -930,9 +930,41 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                             fallbackIcon={market.icon}
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white truncate">
-                              {market.title || market.question || `Market ${market.id}`}
-                            </p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium text-white truncate">
+                                {market.title || market.question || `Market ${market.id}`}
+                              </p>
+                              {isMarketClosed(market) && (() => {
+                                const yesPrice = market.yesPrice || 0
+                                const noPrice = market.noPrice || 0
+                                let resolution = null
+                                
+                                if (yesPrice >= 99) {
+                                  resolution = { outcome: 'Yes', color: 'green' }
+                                } else if (noPrice >= 99) {
+                                  resolution = { outcome: 'No', color: 'red' }
+                                } else if (yesPrice > 45 && yesPrice < 55 && noPrice > 45 && noPrice < 55) {
+                                  resolution = { outcome: 'Unresolved', color: 'gray' }
+                                }
+                                
+                                if (resolution) {
+                                  return (
+                                    <span className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                                      resolution.color === 'green' 
+                                        ? 'bg-green-500/20 text-green-400 border border-green-500/50'
+                                        : resolution.color === 'red'
+                                        ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                                        : 'bg-gray-500/20 text-gray-400 border border-gray-500/50'
+                                    }`}>
+                                      {resolution.outcome === 'Yes' ? '✅ Yes' : 
+                                       resolution.outcome === 'No' ? '❌ No' : 
+                                       '⏸️ Unresolved'}
+                                    </span>
+                                  )
+                                }
+                                return null
+                              })()}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1010,7 +1042,7 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                 <div
                   key={market.id}
                   onClick={() => onSelectMarket && onSelectMarket(market)}
-                  className="bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-yellow-500/50 hover:bg-gray-800/50 transition cursor-pointer"
+                  className="bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-yellow-500/50 hover:bg-gray-800/50 transition cursor-pointer flex flex-col h-full"
                 >
                   {/* Image/Icon */}
                   <div className="mb-3 flex justify-center">
@@ -1026,6 +1058,40 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                   <h3 className="text-sm font-semibold text-white mb-2 line-clamp-2">
                     {market.title || market.question || `Market ${market.id}`}
                   </h3>
+
+                  {/* Closed Market Resolution Badge */}
+                  {isMarketClosed(market) && (() => {
+                    const yesPrice = market.yesPrice || 0
+                    const noPrice = market.noPrice || 0
+                    let resolution = null
+                    
+                    if (yesPrice >= 99) {
+                      resolution = { outcome: 'Yes', color: 'green' }
+                    } else if (noPrice >= 99) {
+                      resolution = { outcome: 'No', color: 'red' }
+                    } else if (yesPrice > 45 && yesPrice < 55 && noPrice > 45 && noPrice < 55) {
+                      resolution = { outcome: 'Unresolved', color: 'gray' }
+                    }
+                    
+                    if (resolution) {
+                      return (
+                        <div className="mb-2">
+                          <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${
+                            resolution.color === 'green' 
+                              ? 'bg-green-500/20 text-green-400 border border-green-500/50'
+                              : resolution.color === 'red'
+                              ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                              : 'bg-gray-500/20 text-gray-400 border border-gray-500/50'
+                          }`}>
+                            {resolution.outcome === 'Yes' ? '✅ Yes Won' : 
+                             resolution.outcome === 'No' ? '❌ No Won' : 
+                             '⏸️ Unresolved'}
+                          </span>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
 
                   {/* Prices */}
                   <div className="flex items-center justify-between mb-3">
@@ -1052,13 +1118,13 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                     </div>
                   </div>
 
-                  {/* Action Button */}
+                  {/* Action Button - Pushed to bottom with mt-auto */}
                   <button 
                     onClick={(e) => {
                       e.stopPropagation()
                       onSelectMarket && onSelectMarket(market)
                     }}
-                    className="w-full px-4 py-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-600 transition font-semibold text-sm"
+                    className="w-full px-4 py-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-600 transition font-semibold text-sm mt-auto"
                   >
                     Trade
                   </button>

@@ -430,9 +430,47 @@ export default function SignalBay() {
                       <h2 className="text-2xl font-bold text-white">{selectedMarket.title}</h2>
                       {(selectedMarket.closed === true || selectedMarket.closed === 'true' || 
                         (selectedMarket.polymarketData && selectedMarket.polymarketData.closed === true)) && (
-                        <span className="px-3 py-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/50 rounded-full">
-                          🔒 Closed
-                        </span>
+                        <>
+                          <span className="px-3 py-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/50 rounded-full">
+                            🔒 Closed
+                          </span>
+                          {(() => {
+                            // Determine resolution based on final prices
+                            const yesPrice = selectedMarket.yesPrice || 0
+                            const noPrice = selectedMarket.noPrice || 0
+                            let resolution = null
+                            
+                            // If Yes is at or near 100¢, Yes won
+                            if (yesPrice >= 99) {
+                              resolution = { outcome: 'Yes', color: 'green' }
+                            }
+                            // If No is at or near 100¢, No won
+                            else if (noPrice >= 99) {
+                              resolution = { outcome: 'No', color: 'red' }
+                            }
+                            // If prices are still around 50/50, market might be unresolved or cancelled
+                            else if (yesPrice > 45 && yesPrice < 55 && noPrice > 45 && noPrice < 55) {
+                              resolution = { outcome: 'Unresolved', color: 'gray' }
+                            }
+                            
+                            if (resolution) {
+                              return (
+                                <span className={`px-3 py-1 text-xs font-semibold ${
+                                  resolution.color === 'green' 
+                                    ? 'bg-green-500/20 text-green-400 border border-green-500/50'
+                                    : resolution.color === 'red'
+                                    ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                                    : 'bg-gray-500/20 text-gray-400 border border-gray-500/50'
+                                } rounded-full`}>
+                                  {resolution.outcome === 'Yes' ? '✅ Yes Won' : 
+                                   resolution.outcome === 'No' ? '❌ No Won' : 
+                                   '⏸️ Unresolved'}
+                                </span>
+                              )
+                            }
+                            return null
+                          })()}
+                        </>
                       )}
                     </div>
                     <TruncatedText 
