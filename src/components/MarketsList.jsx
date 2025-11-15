@@ -214,6 +214,7 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
   const [markets, setMarkets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [isSearching, setIsSearching] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('Trending')
   const [viewMode, setViewMode] = useState('list') // 'list' or 'tile'
@@ -337,12 +338,9 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
       }
 
       try {
-        console.log('[Tags] Fetching tags for category mapping...')
         const tags = await polymarketService.getTags()
         tagsRef.current = tags
-        console.log(`[Tags] Cached ${tags.length} tags for category mapping`)
       } catch (err) {
-        console.warn('Error fetching tags, will use client-side filtering as fallback:', err)
         tagsRef.current = [] // Set to empty array to prevent repeated failed attempts
       }
     }
@@ -359,11 +357,9 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
 
         // If eventFilter is provided, fetch markets for that event
         if (eventFilter) {
-          console.log('[MarketsList] Fetching markets for event:', eventFilter)
           
           // First, check if event has markets directly
           if (eventFilter.markets && Array.isArray(eventFilter.markets) && eventFilter.markets.length > 0) {
-            console.log(`[MarketsList] Event has ${eventFilter.markets.length} markets directly`)
             const transformedMarkets = eventFilter.markets.map(market => {
               // Transform event market to our format if needed
               return market.id ? market : { ...market, id: market.conditionId || market.slug || `event-market-${Date.now()}` }
@@ -376,7 +372,6 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
           // Otherwise, search for markets using event title or slug
           const searchQuery = eventFilter.slug || eventFilter.title || eventFilter.question || eventFilter.name
           if (searchQuery) {
-            console.log(`[MarketsList] Searching for markets with query: "${searchQuery}"`)
             const searchResults = await polymarketService.searchMarkets(searchQuery, {
               limit_per_type: 100,
               search_tags: true,
@@ -396,14 +391,12 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                      (eventSlug && (marketTitle.includes(eventSlug) || marketDescription.includes(eventSlug)))
             })
             
-            console.log(`[MarketsList] Found ${eventMarkets.length} markets for event`)
             setMarkets(eventMarkets)
             setLoading(false)
             return
           }
           
           // If no search query available, show empty
-          console.warn('[MarketsList] Event has no markets and no searchable identifier')
           setMarkets([])
           setLoading(false)
           return
@@ -479,7 +472,6 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                   }
                 })
                 sportsTagIdsRef.current = Array.from(allTagIds)
-                console.log(`[Sports] Found ${sportsTagIdsRef.current.length} unique tag IDs from sports metadata`)
               }
               
               if (sportsTagIdsRef.current.length > 0) {
@@ -493,11 +485,9 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                   const tagIdToUse = validTagIds[0]
                   apiOptions.tag_id = tagIdToUse
                   apiOptions.related_tags = true
-                  console.log(`[Sports] Using tag_id: ${tagIdToUse} (from ${validTagIds.length} available)`)
                 }
               }
             } catch (err) {
-              console.warn('Error fetching sports tag IDs, falling back to client-side filtering:', err)
             }
           } else {
             // For non-sports categories, try to find tag IDs from tags API
@@ -506,9 +496,7 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
               // Use all matched tag IDs for server-side filtering
               apiOptions.tag_id = categoryTagIds
               apiOptions.related_tags = true // Include related tags
-              console.log(`[${selectedCategory}] Using ${categoryTagIds.length} tag IDs for server-side filtering:`, categoryTagIds)
             } else {
-              console.log(`[${selectedCategory}] No tag IDs found, will use client-side filtering`)
             }
           }
           
@@ -576,10 +564,9 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
       }
 
       try {
-        setLoading(true)
+        setIsSearching(true)
         setError(null)
 
-        console.log(`[Search] Searching for: "${searchQuery}"`)
         const searchResults = await polymarketService.searchMarkets(searchQuery, {
           limit_per_type: 50, // Limit results per type (markets, events, etc.)
           search_tags: true, // Search in tags
@@ -588,13 +575,12 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
         })
 
         setMarkets(searchResults)
-        console.log(`[Search] Displaying ${searchResults.length} search results`)
       } catch (err) {
         console.error('Error searching markets:', err)
         setError(err.message || 'Search failed')
         setMarkets([])
       } finally {
-        setLoading(false)
+        setIsSearching(false)
       }
     }
 
@@ -819,6 +805,11 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                 />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400"></div>
+                  </div>
+                )}
               </div>
               {/* Filter Button */}
               <button 

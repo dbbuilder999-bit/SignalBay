@@ -56,10 +56,8 @@ export default function EventsList({ onSelectEvent }) {
     e.stopPropagation() // Prevent event card click
     setEventWatchlist(prev => {
       if (prev.includes(eventId)) {
-        console.log(`[Event Watchlist] Removing event ${eventId} from watchlist`)
         return prev.filter(id => id !== eventId)
       } else {
-        console.log(`[Event Watchlist] Adding event ${eventId} to watchlist`)
         return [...prev, eventId]
       }
     })

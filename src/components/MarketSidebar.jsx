@@ -63,7 +63,6 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
                   }
                 })
             } catch (err) {
-              console.warn('[Related] Error fetching by category:', err)
             }
           }
           
@@ -94,7 +93,6 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
                     }
                   })
               } catch (err) {
-                console.warn('[Related] Error fetching by keywords:', err)
               }
             }
           }
@@ -120,7 +118,6 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
                   })
               }
             } catch (err) {
-              console.warn('[Related] Error fetching by tags:', err)
             }
           }
           
@@ -138,13 +135,11 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
               )
               allRelatedMarkets.push(...categoryFiltered.slice(0, 10))
             } catch (err) {
-              console.warn('[Related] Error fetching fallback markets:', err)
             }
           }
           
           // Limit to 15 related markets
           setRelatedMarkets(allRelatedMarkets.slice(0, 15))
-          console.log(`[Related] Found ${allRelatedMarkets.length} related markets for "${selectedMarket.title}"`)
         } catch (err) {
           console.error('[Related] Error fetching related markets:', err)
           setRelatedMarkets([])
@@ -174,7 +169,6 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
         )
 
         if (missingMarketIds.length > 0) {
-          console.log(`[Watchlist] Fetching ${missingMarketIds.length} missing markets from watchlist`)
           try {
             // Try to fetch missing markets by ID
             const fetchedMarkets = []
@@ -185,12 +179,10 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
                   fetchedMarkets.push(market)
                 }
               } catch (err) {
-                console.warn(`[Watchlist] Could not fetch market ${marketId}:`, err)
               }
             }
             if (fetchedMarkets.length > 0) {
               setWatchlistMarkets(fetchedMarkets)
-              console.log(`[Watchlist] Fetched ${fetchedMarkets.length} markets for watchlist`)
             }
           } catch (err) {
             console.error('[Watchlist] Error fetching watchlist markets:', err)
@@ -224,7 +216,6 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
     setIsSearching(true)
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        console.log(`[MarketSidebar Search] Searching for: "${searchQuery}"`)
         const results = await polymarketService.searchMarkets(searchQuery, {
           limit_per_type: 50, // Limit results per type (markets, events, etc.)
           search_tags: true, // Search in tags
@@ -233,7 +224,6 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
         })
 
         setSearchResults(results)
-        console.log(`[MarketSidebar Search] Found ${results.length} results`)
       } catch (err) {
         console.error('Error searching markets in sidebar:', err)
         setSearchResults([]) // Set to empty array on error
@@ -337,7 +327,6 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
       })
       marketsToDisplay = uniqueMarkets
       
-      console.log(`[Watchlist Tab] Found ${marketsToDisplay.length} markets in watchlist (watchlist has ${watchlist.length} IDs, from ${markets.length} current + ${watchlistMarkets.length} fetched)`)
     } else {
       marketsToDisplay = []
     }
@@ -419,7 +408,8 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
       <div className="flex-1 overflow-y-auto">
         {isSearching && (
           <div className="p-4 text-center text-gray-400 text-sm">
-            Searching...
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-400 mx-auto mb-2"></div>
+            <p>Searching markets...</p>
           </div>
         )}
         {!isSearching && searchResults !== null && filteredMarkets.length === 0 && (
@@ -435,7 +425,8 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
         )}
         {!isSearching && searchResults === null && activeTab === 'Related' && isLoadingRelated && (
           <div className="p-4 text-center text-gray-400 text-sm">
-            Loading related markets...
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-400 mx-auto mb-2"></div>
+            <p>Loading related markets...</p>
           </div>
         )}
         {!isSearching && searchResults === null && activeTab === 'Related' && !isLoadingRelated && filteredMarkets.length === 0 && (

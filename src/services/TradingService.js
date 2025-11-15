@@ -60,7 +60,6 @@ class TradingService {
       )
 
       this.isInitialized = true
-      console.log('✅ Trading service initialized successfully')
       
       return this.clobClient
     } catch (error) {
@@ -106,7 +105,6 @@ class TradingService {
         orderType
       )
 
-      console.log('✅ Order placed successfully:', order)
       return order
     } catch (error) {
       console.error('❌ Failed to place order:', error)

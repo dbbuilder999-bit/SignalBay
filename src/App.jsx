@@ -75,6 +75,7 @@ export default function SignalBay() {
     }
   })
   const [showRulesModal, setShowRulesModal] = useState(false)
+  const [loadingMarket, setLoadingMarket] = useState(false)
 
   // Fetch markets on mount (only when in trade view, since MarketsList handles its own data)
   useEffect(() => {
@@ -132,7 +133,6 @@ export default function SignalBay() {
   // Handle wallet connection
   const handleWalletConnect = (result) => {
     setWalletAddress(result.address)
-    console.log('Wallet connected:', result.address)
   }
 
   // Save watchlist to localStorage whenever it changes
@@ -148,10 +148,8 @@ export default function SignalBay() {
   const toggleWatchlist = (marketId) => {
     setWatchlist(prev => {
       if (prev.includes(marketId)) {
-        console.log(`[Watchlist] Removing market ${marketId} from watchlist`)
         return prev.filter(id => id !== marketId)
       } else {
-        console.log(`[Watchlist] Adding market ${marketId} to watchlist`)
         return [...prev, marketId]
       }
     })
@@ -358,7 +356,6 @@ export default function SignalBay() {
                       market = fullMarket
                     }
                   } catch (error) {
-                    console.warn('Could not fetch full market data, using event market:', error)
                   }
                 }
                 // Ensure prices have defaults
@@ -393,15 +390,34 @@ export default function SignalBay() {
         <MarketsList 
           eventFilter={selectedEvent}
           onClearEventFilter={() => setSelectedEvent(null)}
-          onSelectMarket={(market) => {
-            // Add market to markets list if not already present
-            setMarkets(prev => {
-              const exists = prev.find(m => m.id === market.id)
-              if (exists) return prev
-              return [market, ...prev]
-            })
-            setSelectedMarket(market)
-            setViewMode('trade') // Switch to trade view
+          onSelectMarket={async (market) => {
+            setLoadingMarket(true)
+            try {
+              // If market doesn't have prices, try to fetch full market data
+              if (!market.yesPrice || !market.noPrice) {
+                try {
+                  const fullMarket = await dataService.getMarket(market.id)
+                  if (fullMarket) {
+                    market = fullMarket
+                  }
+                } catch (error) {
+                  // Continue with existing market data if fetch fails
+                }
+              }
+              // Ensure prices have defaults
+              if (!market.yesPrice) market.yesPrice = 50
+              if (!market.noPrice) market.noPrice = 50
+              // Add market to markets list if not already present
+              setMarkets(prev => {
+                const exists = prev.find(m => m.id === market.id)
+                if (exists) return prev
+                return [market, ...prev]
+              })
+              setSelectedMarket(market)
+              setViewMode('trade') // Switch to trade view
+            } finally {
+              setLoadingMarket(false)
+            }
           }}
         />
       ) : (
@@ -410,7 +426,28 @@ export default function SignalBay() {
         <MarketSidebar
           markets={markets}
           selectedMarket={selectedMarket}
-          onSelectMarket={setSelectedMarket}
+          onSelectMarket={async (market) => {
+            setLoadingMarket(true)
+            try {
+              // If market doesn't have prices, try to fetch full market data
+              if (!market.yesPrice || !market.noPrice) {
+                try {
+                  const fullMarket = await dataService.getMarket(market.id)
+                  if (fullMarket) {
+                    market = fullMarket
+                  }
+                } catch (error) {
+                  // Continue with existing market data if fetch fails
+                }
+              }
+              // Ensure prices have defaults
+              if (!market.yesPrice) market.yesPrice = 50
+              if (!market.noPrice) market.noPrice = 50
+              setSelectedMarket(market)
+            } finally {
+              setLoadingMarket(false)
+            }
+          }}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           watchlist={watchlist}
@@ -418,7 +455,15 @@ export default function SignalBay() {
         />
 
         {/* Central Trading Area */}
-        <main className="flex-1 flex flex-col border-r border-white/10 overflow-hidden">
+        <main className="flex-1 flex flex-col border-r border-white/10 overflow-hidden relative">
+          {loadingMarket && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[#0a0d14]/80 z-20">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+                <p className="text-gray-400">Loading market data...</p>
+              </div>
+            </div>
+          )}
           {selectedMarket && (
             <>
               {/* Market Header */}
@@ -509,7 +554,6 @@ export default function SignalBay() {
               <button 
                 onClick={() => {
                   if (selectedMarket) {
-                    console.log(`[Watchlist] Toggling market: ${selectedMarket.id}, currently in watchlist: ${isInWatchlist(selectedMarket.id)}`)
                     toggleWatchlist(selectedMarket.id)
                   }
                 }}

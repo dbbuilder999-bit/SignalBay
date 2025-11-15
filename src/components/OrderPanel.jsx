@@ -51,7 +51,6 @@ export default function OrderPanel({ market }) {
           setIsConnected(true)
         }
       } catch (error) {
-        console.log('Trading service not initialized:', error.message)
         setIsConnected(false)
       }
     }
