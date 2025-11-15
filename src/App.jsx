@@ -6,6 +6,7 @@ import TradingTabs from './components/TradingTabs'
 import OrderPanel from './components/OrderPanel'
 import MarketsList from './components/MarketsList'
 import TruncatedText from './components/TruncatedText'
+import LandingPage from './components/LandingPage'
 // Polymarket is the source of truth for market data
 import { polymarketService } from './services/PolymarketService'
 
@@ -13,6 +14,14 @@ import { polymarketService } from './services/PolymarketService'
 const dataService = polymarketService
 
 export default function SignalBay() {
+  const [showLanding, setShowLanding] = useState(() => {
+    // Check if user has visited before (stored in localStorage)
+    try {
+      return !localStorage.getItem('signalbay-has-visited')
+    } catch {
+      return true
+    }
+  })
   const [showEvents, setShowEvents] = useState(true) // Show events list by default
   const [selectedMarket, setSelectedMarket] = useState(null)
   const [markets, setMarkets] = useState([])
@@ -122,6 +131,22 @@ export default function SignalBay() {
         </div>
       </div>
     )
+  }
+
+  // Handle start trading from landing page
+  const handleStartTrading = () => {
+    try {
+      localStorage.setItem('signalbay-has-visited', 'true')
+    } catch (error) {
+      console.error('Error saving visit status:', error)
+    }
+    setShowLanding(false)
+    setShowEvents(true)
+  }
+
+  // Show landing page if not visited before
+  if (showLanding) {
+    return <LandingPage onStartTrading={handleStartTrading} />
   }
 
   return (
