@@ -26,6 +26,8 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
   const [searchResults, setSearchResults] = useState(null) // null = no search, [] = search with no results, [...] = search results
   const [isSearching, setIsSearching] = useState(false)
   const [watchlistMarkets, setWatchlistMarkets] = useState([]) // Markets fetched specifically for watchlist
+  const [relatedMarkets, setRelatedMarkets] = useState([]) // Markets fetched for Related tab
+  const [isLoadingRelated, setIsLoadingRelated] = useState(false)
   const searchTimeoutRef = useRef(null)
   const originalMarketsRef = useRef(markets) // Store original markets
 
@@ -35,6 +37,128 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
       originalMarketsRef.current = markets
     }
   }, [markets, searchQuery])
+
+  // Fetch related markets when Related tab is active and a market is selected
+  useEffect(() => {
+    if (activeTab === 'Related' && selectedMarket) {
+      const fetchRelatedMarkets = async () => {
+        setIsLoadingRelated(true)
+        try {
+          const allRelatedMarkets = []
+          
+          // Strategy 1: Search by category if available
+          if (selectedMarket.category) {
+            try {
+              const categoryMarkets = await polymarketService.searchMarkets(selectedMarket.category, {
+                limit_per_type: 20,
+                search_tags: true,
+                sort: 'relevance',
+              })
+              // Filter out the current market and add to results
+              categoryMarkets
+                .filter(m => m.id !== selectedMarket.id)
+                .forEach(m => {
+                  if (!allRelatedMarkets.find(rm => rm.id === m.id)) {
+                    allRelatedMarkets.push(m)
+                  }
+                })
+            } catch (err) {
+              console.warn('[Related] Error fetching by category:', err)
+            }
+          }
+          
+          // Strategy 2: Extract keywords from title and search
+          const title = selectedMarket.title || selectedMarket.question || ''
+          if (title) {
+            // Extract key words (remove common words, get 2-3 most relevant words)
+            const words = title.toLowerCase()
+              .replace(/[^\w\s]/g, ' ')
+              .split(/\s+/)
+              .filter(w => w.length > 3 && !['will', 'this', 'that', 'what', 'when', 'where', 'which', 'who', 'how'].includes(w))
+              .slice(0, 3)
+            
+            if (words.length > 0) {
+              const searchQuery = words.join(' ')
+              try {
+                const keywordMarkets = await polymarketService.searchMarkets(searchQuery, {
+                  limit_per_type: 20,
+                  search_tags: true,
+                  sort: 'relevance',
+                })
+                // Filter out the current market and add to results
+                keywordMarkets
+                  .filter(m => m.id !== selectedMarket.id)
+                  .forEach(m => {
+                    if (!allRelatedMarkets.find(rm => rm.id === m.id)) {
+                      allRelatedMarkets.push(m)
+                    }
+                  })
+              } catch (err) {
+                console.warn('[Related] Error fetching by keywords:', err)
+              }
+            }
+          }
+          
+          // Strategy 3: If market has tags, fetch markets with same tags
+          if (selectedMarket.polymarketData?.tags && Array.isArray(selectedMarket.polymarketData.tags) && selectedMarket.polymarketData.tags.length > 0) {
+            try {
+              // Get markets with the same tag (use first tag)
+              const tagId = selectedMarket.polymarketData.tags[0]
+              if (tagId) {
+                const tagMarkets = await polymarketService.getMarkets({
+                  tag_id: tagId,
+                  related_tags: true,
+                  limit: 20,
+                  active: true,
+                })
+                tagMarkets
+                  .filter(m => m.id !== selectedMarket.id)
+                  .forEach(m => {
+                    if (!allRelatedMarkets.find(rm => rm.id === m.id)) {
+                      allRelatedMarkets.push(m)
+                    }
+                  })
+              }
+            } catch (err) {
+              console.warn('[Related] Error fetching by tags:', err)
+            }
+          }
+          
+          // Strategy 4: Fallback - get trending markets in same category
+          if (allRelatedMarkets.length === 0 && selectedMarket.category) {
+            try {
+              const fallbackMarkets = await polymarketService.getMarkets({
+                limit: 30,
+                active: true,
+              })
+              // Filter by category and exclude current market
+              const categoryFiltered = fallbackMarkets.filter(m => 
+                m.category === selectedMarket.category && 
+                m.id !== selectedMarket.id
+              )
+              allRelatedMarkets.push(...categoryFiltered.slice(0, 10))
+            } catch (err) {
+              console.warn('[Related] Error fetching fallback markets:', err)
+            }
+          }
+          
+          // Limit to 15 related markets
+          setRelatedMarkets(allRelatedMarkets.slice(0, 15))
+          console.log(`[Related] Found ${allRelatedMarkets.length} related markets for "${selectedMarket.title}"`)
+        } catch (err) {
+          console.error('[Related] Error fetching related markets:', err)
+          setRelatedMarkets([])
+        } finally {
+          setIsLoadingRelated(false)
+        }
+      }
+      
+      fetchRelatedMarkets()
+    } else {
+      setRelatedMarkets([])
+      setIsLoadingRelated(false)
+    }
+  }, [activeTab, selectedMarket])
 
   // Fetch watchlisted markets that aren't in the current markets array
   useEffect(() => {
@@ -220,13 +344,20 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
   } else if (activeTab === 'Trending') {
     // For Trending, show markets sorted by volume (already sorted by endDate from API)
     marketsToDisplay = [...markets].sort((a, b) => (b.volume || 0) - (a.volume || 0))
-  } else if (activeTab === 'Related' && selectedMarket) {
-    // For Related, show markets in same category
-    const relatedCategory = selectedMarket.category
-    marketsToDisplay = markets.filter(m => 
-      m.category === relatedCategory && 
-      m.id !== selectedMarket.id
-    )
+  } else if (activeTab === 'Related') {
+    // For Related, use fetched related markets, fallback to category filter from existing markets
+    if (relatedMarkets.length > 0) {
+      marketsToDisplay = relatedMarkets
+    } else if (selectedMarket) {
+      // Fallback: show markets in same category from existing markets
+      const relatedCategory = selectedMarket.category
+      marketsToDisplay = markets.filter(m => 
+        m.category === relatedCategory && 
+        m.id !== selectedMarket.id
+      )
+    } else {
+      marketsToDisplay = []
+    }
   }
 
   // Determine which markets to display and sort them
@@ -296,6 +427,17 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
           <div className="p-4 text-center text-gray-400 text-sm">
             <p className="mb-2">Your watchlist is empty</p>
             <p className="text-xs text-gray-500">Click the star icon on any market to add it to your watchlist</p>
+          </div>
+        )}
+        {!isSearching && searchResults === null && activeTab === 'Related' && isLoadingRelated && (
+          <div className="p-4 text-center text-gray-400 text-sm">
+            Loading related markets...
+          </div>
+        )}
+        {!isSearching && searchResults === null && activeTab === 'Related' && !isLoadingRelated && filteredMarkets.length === 0 && (
+          <div className="p-4 text-center text-gray-400 text-sm">
+            <p className="mb-2">No related markets found</p>
+            <p className="text-xs text-gray-500">Try selecting a different market to see related markets</p>
           </div>
         )}
         {filteredMarkets.map((market) => (

@@ -2,6 +2,141 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Search, Filter, List, Grid } from 'lucide-react'
 import { polymarketService } from '../services/PolymarketService'
 
+// Sports Grouped View Component
+function SportsGroupedView({ marketsBySport, onSelectMarket, sortMarkets }) {
+  // Define sport order: Football and Basketball first, then others
+  const sportOrder = ['NFL', 'CFB', 'NBA', 'MLB', 'NHL', 'UFC', 'Soccer', 'Other']
+  const mainSports = ['NFL', 'CFB', 'NBA'] // Main sports to feature
+  
+  // Get sorted sports list
+  const sortedSports = Object.keys(marketsBySport).sort((a, b) => {
+    const aIndex = sportOrder.indexOf(a) !== -1 ? sportOrder.indexOf(a) : 999
+    const bIndex = sportOrder.indexOf(b) !== -1 ? sportOrder.indexOf(b) : 999
+    return aIndex - bIndex
+  })
+  
+  const formatPrice = (price) => {
+    if (price >= 100) return '100.0¢'
+    if (price <= 0) return '0.0¢'
+    return `${price.toFixed(1)}¢`
+  }
+  
+  const formatCurrency = (value) => {
+    if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`
+    if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`
+    return `$${value.toLocaleString()}`
+  }
+  
+  return (
+    <div className="space-y-8">
+      {/* Main Sports Section - Football and Basketball */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {sortedSports.filter(sport => mainSports.includes(sport)).map(sport => {
+          const sportMarkets = sortMarkets(marketsBySport[sport])
+          if (sportMarkets.length === 0) return null
+          
+          return (
+            <div key={sport} className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <span className="text-3xl">
+                    {sport === 'NFL' || sport === 'CFB' ? '🏈' : sport === 'NBA' ? '🏀' : '⚽'}
+                  </span>
+                  {sport}
+                </h2>
+                <span className="text-sm text-gray-400">{sportMarkets.length} markets</span>
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {sportMarkets.slice(0, 5).map(market => (
+                  <button
+                    key={market.id}
+                    onClick={() => onSelectMarket && onSelectMarket(market)}
+                    className="w-full text-left p-3 bg-gray-800/50 rounded-lg hover:bg-gray-800 border border-gray-700/50 hover:border-yellow-500/50 transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{market.title || market.question}</p>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                          <span className="text-green-400">Yes {formatPrice(market.yesPrice || 0)}</span>
+                          <span>•</span>
+                          <span className="text-red-400">No {formatPrice(market.noPrice || 0)}</span>
+                        </div>
+                      </div>
+                      <div className="text-right ml-4">
+                        <p className="text-xs text-gray-500">Vol</p>
+                        <p className="text-xs text-white font-medium">{formatCurrency(market.volume24h || market.volume || 0)}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+                {sportMarkets.length > 5 && (
+                  <p className="text-xs text-gray-500 text-center pt-2">
+                    +{sportMarkets.length - 5} more markets
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      
+      {/* Other Sports Section */}
+      {sortedSports.filter(sport => !mainSports.includes(sport)).length > 0 && (
+        <div>
+          <h2 className="text-xl font-bold text-white mb-4">Other Sports</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sortedSports.filter(sport => !mainSports.includes(sport)).map(sport => {
+              const sportMarkets = sortMarkets(marketsBySport[sport])
+              if (sportMarkets.length === 0) return null
+              
+              const sportIcons = {
+                'MLB': '⚾',
+                'NHL': '🏒',
+                'UFC': '🥊',
+                'Soccer': '⚽',
+                'Other': '🏆'
+              }
+              
+              return (
+                <div key={sport} className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <span className="text-2xl">{sportIcons[sport] || '🏆'}</span>
+                      {sport}
+                    </h3>
+                    <span className="text-xs text-gray-400">{sportMarkets.length}</span>
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {sportMarkets.slice(0, 3).map(market => (
+                      <button
+                        key={market.id}
+                        onClick={() => onSelectMarket && onSelectMarket(market)}
+                        className="w-full text-left p-2 bg-gray-800/50 rounded hover:bg-gray-800 transition text-sm"
+                      >
+                        <p className="text-white truncate">{market.title || market.question}</p>
+                        <div className="flex items-center gap-2 mt-1 text-xs">
+                          <span className="text-green-400">{formatPrice(market.yesPrice || 0)}</span>
+                          <span className="text-gray-600">•</span>
+                          <span className="text-red-400">{formatPrice(market.noPrice || 0)}</span>
+                        </div>
+                      </button>
+                    ))}
+                    {sportMarkets.length > 3 && (
+                      <p className="text-xs text-gray-500 text-center pt-1">
+                        +{sportMarkets.length - 3} more
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const categories = ['Trending', 'New', 'Politics', 'Sports', 'Finance', 'Crypto', 'Tech', 'Pop Culture', 'Business', 'World', 'Science']
 
 // Map UI category names to Polymarket API parameters
@@ -37,18 +172,37 @@ const categoryMap = {
 }
 
 // Component to handle market images with fallback to icon
-function MarketImage({ src, alt, fallbackIcon, size = 'small' }) {
+function MarketImage({ market, alt, fallbackIcon, size = 'small' }) {
   const [imageError, setImageError] = useState(false)
 
-  if (imageError && fallbackIcon) {
+  // Check multiple possible field names for image URL (similar to events)
+  const imageUrl = market?.imageUrl || 
+                  market?.image || 
+                  market?.thumbnail || 
+                  market?.image_url ||
+                  market?.thumbnailUrl ||
+                  market?.thumbnail_url ||
+                  null
+  
+  // Only use if it's a valid URL string
+  const hasValidImage = imageUrl && 
+                       typeof imageUrl === 'string' && 
+                       (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) &&
+                       !imageError
+
+  if (!hasValidImage && fallbackIcon) {
     const sizeClass = size === 'large' ? 'text-4xl' : 'text-xl'
     return <span className={`${sizeClass} flex-shrink-0`}>{fallbackIcon}</span>
+  }
+
+  if (!hasValidImage) {
+    return null
   }
 
   const sizeClass = size === 'large' ? 'w-full h-32 rounded-lg mb-3' : 'w-10 h-10 rounded'
   return (
     <img 
-      src={src} 
+      src={imageUrl} 
       alt={alt}
       className={`${sizeClass} object-cover flex-shrink-0`}
       onError={() => setImageError(true)}
@@ -56,7 +210,7 @@ function MarketImage({ src, alt, fallbackIcon, size = 'small' }) {
   )
 }
 
-export default function MarketsList({ onSelectMarket }) {
+export default function MarketsList({ onSelectMarket, eventFilter, onClearEventFilter }) {
   const [markets, setMarkets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -66,6 +220,66 @@ export default function MarketsList({ onSelectMarket }) {
   const categoryCacheRef = useRef({}) // Cache markets by category using ref to avoid dependency issues
   const sportsTagIdsRef = useRef(null) // Cache sports tag IDs
   const tagsRef = useRef(null) // Cache tags data for category-to-tag_id mapping
+  const sportsDataRef = useRef(null) // Cache sports metadata
+  const [marketsBySport, setMarketsBySport] = useState({}) // Group markets by sport
+
+  // Helper function to group markets by sport
+  const groupMarketsBySport = React.useCallback((marketsList, sportsMetadata) => {
+    const grouped = {}
+    
+    marketsList.forEach(market => {
+      const title = (market.title || market.question || '').toLowerCase()
+      const description = (market.description || '').toLowerCase()
+      
+      // Try to match market to a sport
+      let matchedSport = null
+      
+      for (const sport of sportsMetadata) {
+        const sportName = (sport.sport || sport.name || '').toLowerCase()
+        const sportKeywords = [
+          sportName,
+          ...(sportName.includes('nfl') ? ['nfl', 'football', 'nfc', 'afc'] : []),
+          ...(sportName.includes('nba') ? ['nba', 'basketball'] : []),
+          ...(sportName.includes('cfb') || sportName.includes('college') ? ['cfb', 'college football', 'ncaa'] : []),
+          ...(sportName.includes('mlb') ? ['mlb', 'baseball'] : []),
+          ...(sportName.includes('nhl') ? ['nhl', 'hockey'] : []),
+          ...(sportName.includes('ufc') ? ['ufc', 'mma'] : []),
+          ...(sportName.includes('soccer') ? ['soccer', 'football'] : []),
+        ]
+        
+        if (sportKeywords.some(keyword => title.includes(keyword) || description.includes(keyword))) {
+          matchedSport = sport.sport || sport.name || 'Other'
+          break
+        }
+      }
+      
+      // Fallback: try to detect sport from title
+      if (!matchedSport) {
+        if (title.includes('nfl') || title.includes('football') || title.includes('super bowl')) {
+          matchedSport = 'NFL'
+        } else if (title.includes('nba') || title.includes('basketball')) {
+          matchedSport = 'NBA'
+        } else if (title.includes('cfb') || title.includes('college football')) {
+          matchedSport = 'CFB'
+        } else if (title.includes('mlb') || title.includes('baseball')) {
+          matchedSport = 'MLB'
+        } else if (title.includes('nhl') || title.includes('hockey')) {
+          matchedSport = 'NHL'
+        } else if (title.includes('ufc') || title.includes('mma')) {
+          matchedSport = 'UFC'
+        } else {
+          matchedSport = 'Other'
+        }
+      }
+      
+      if (!grouped[matchedSport]) {
+        grouped[matchedSport] = []
+      }
+      grouped[matchedSport].push(market)
+    })
+    
+    return grouped
+  }, [])
 
   // Map UI category names to potential tag name matches
   const categoryToTagNameMap = {
@@ -129,12 +343,64 @@ export default function MarketsList({ onSelectMarket }) {
     fetchTags()
   }, []) // Only run once on mount
 
-  // Fetch markets based on selected category
+  // Fetch markets based on selected category or event filter
   useEffect(() => {
     const fetchMarkets = async () => {
       try {
         setLoading(true)
         setError(null)
+
+        // If eventFilter is provided, fetch markets for that event
+        if (eventFilter) {
+          console.log('[MarketsList] Fetching markets for event:', eventFilter)
+          
+          // First, check if event has markets directly
+          if (eventFilter.markets && Array.isArray(eventFilter.markets) && eventFilter.markets.length > 0) {
+            console.log(`[MarketsList] Event has ${eventFilter.markets.length} markets directly`)
+            const transformedMarkets = eventFilter.markets.map(market => {
+              // Transform event market to our format if needed
+              return market.id ? market : { ...market, id: market.conditionId || market.slug || `event-market-${Date.now()}` }
+            })
+            setMarkets(transformedMarkets)
+            setLoading(false)
+            return
+          }
+          
+          // Otherwise, search for markets using event title or slug
+          const searchQuery = eventFilter.slug || eventFilter.title || eventFilter.question || eventFilter.name
+          if (searchQuery) {
+            console.log(`[MarketsList] Searching for markets with query: "${searchQuery}"`)
+            const searchResults = await polymarketService.searchMarkets(searchQuery, {
+              limit_per_type: 100,
+              search_tags: true,
+              sort: 'relevance',
+            })
+            
+            // Filter results to match event more closely
+            const eventMarkets = searchResults.filter(market => {
+              const marketTitle = (market.title || market.question || '').toLowerCase()
+              const marketDescription = (market.description || '').toLowerCase()
+              const eventTitle = (eventFilter.title || eventFilter.question || eventFilter.name || '').toLowerCase()
+              const eventSlug = (eventFilter.slug || '').toLowerCase()
+              
+              // Check if market title/description contains event title or slug
+              return marketTitle.includes(eventTitle) || 
+                     marketDescription.includes(eventTitle) ||
+                     (eventSlug && (marketTitle.includes(eventSlug) || marketDescription.includes(eventSlug)))
+            })
+            
+            console.log(`[MarketsList] Found ${eventMarkets.length} markets for event`)
+            setMarkets(eventMarkets)
+            setLoading(false)
+            return
+          }
+          
+          // If no search query available, show empty
+          console.warn('[MarketsList] Event has no markets and no searchable identifier')
+          setMarkets([])
+          setLoading(false)
+          return
+        }
 
         // For "Trending" and "New", fetch all markets (client-side filtering)
         if (selectedCategory === 'Trending' || selectedCategory === 'New') {
@@ -186,12 +452,13 @@ export default function MarketsList({ onSelectMarket }) {
             _category: selectedCategory.toLowerCase(),
           }
           
-          // For Sports category, use sports tag IDs for server-side filtering
+          // For Sports category, try to use sports tag IDs if available
           if (selectedCategory === 'Sports') {
             try {
-              // Get sports tag IDs (cache them)
-              if (!sportsTagIdsRef.current) {
+              // Get sports metadata (cache them)
+              if (!sportsDataRef.current) {
                 const sports = await polymarketService.getSports()
+                sportsDataRef.current = sports
                 // Get all unique tag IDs from all sports
                 const allTagIds = new Set()
                 sports.forEach(sport => {
@@ -209,11 +476,18 @@ export default function MarketsList({ onSelectMarket }) {
               }
               
               if (sportsTagIdsRef.current.length > 0) {
-                // TESTING: Use single tag_id for now (first one)
-                const singleTagId = sportsTagIdsRef.current[0]
-                apiOptions.tag_id = singleTagId
-                apiOptions.related_tags = true // Include related tags
-                console.log(`[Sports] Using single tag_id for testing: ${singleTagId} (from ${sportsTagIdsRef.current.length} available)`)
+                // Filter out invalid tag IDs
+                const validTagIds = sportsTagIdsRef.current.filter(id => 
+                  id != null && !isNaN(id) && typeof id === 'number' && id > 0
+                )
+                
+                if (validTagIds.length > 0) {
+                  // Use the first valid tag ID
+                  const tagIdToUse = validTagIds[0]
+                  apiOptions.tag_id = tagIdToUse
+                  apiOptions.related_tags = true
+                  console.log(`[Sports] Using tag_id: ${tagIdToUse} (from ${validTagIds.length} available)`)
+                }
               }
             } catch (err) {
               console.warn('Error fetching sports tag IDs, falling back to client-side filtering:', err)
@@ -262,6 +536,12 @@ export default function MarketsList({ onSelectMarket }) {
             )
           })
 
+          // For Sports category, group markets by sport (optional - can be enabled later)
+          // if (selectedCategory === 'Sports' && sportsDataRef.current) {
+          //   const grouped = groupMarketsBySport(filtered, sportsDataRef.current)
+          //   setMarketsBySport(grouped)
+          // }
+
           setMarkets(filtered)
           // Cache the filtered results for this category
           categoryCacheRef.current[selectedCategory] = filtered
@@ -275,7 +555,7 @@ export default function MarketsList({ onSelectMarket }) {
     }
 
     fetchMarkets()
-  }, [selectedCategory]) // Re-fetch when category changes
+  }, [selectedCategory, eventFilter]) // Re-fetch when category or eventFilter changes
 
   // Handle search queries using public-search endpoint
   useEffect(() => {
@@ -434,11 +714,24 @@ export default function MarketsList({ onSelectMarket }) {
       <div className="sticky top-0 z-50 bg-black border-b border-gray-800 px-6 py-4">
         <div className="max-w-[1920px] mx-auto">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-white">
-              {searchQuery 
-                ? `Search: "${searchQuery}" (${filteredMarkets.length} results)`
-                : `${filteredMarkets.length} Markets`}
-            </h1>
+            <div className="flex items-center gap-4">
+              {eventFilter && (
+                <button
+                  onClick={() => onClearEventFilter && onClearEventFilter()}
+                  className="text-gray-400 hover:text-white transition"
+                  title="View all markets"
+                >
+                  ← Back
+                </button>
+              )}
+              <h1 className="text-2xl font-bold text-white">
+                {eventFilter 
+                  ? `${eventFilter.title || eventFilter.question || eventFilter.name || 'Event'} Markets (${filteredMarkets.length})`
+                  : searchQuery 
+                    ? `Search: "${searchQuery}" (${filteredMarkets.length} results)`
+                    : `${filteredMarkets.length} Markets`}
+              </h1>
+            </div>
             <div className="flex items-center gap-4">
               {/* View Toggle */}
               <div className="flex items-center gap-1 bg-gray-900 border border-gray-700 rounded-lg p-1">
@@ -485,20 +778,22 @@ export default function MarketsList({ onSelectMarket }) {
           </div>
 
           {/* Category Filters */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2">
-            {categories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                  selectedCategory === category
-                    ? 'bg-yellow-500 text-black border-2 border-yellow-500'
-                    : 'bg-gray-900 text-gray-300 border border-gray-700 hover:bg-gray-800'
-                }`}
-              >
-                {category}
-              </button>
-            ))}
+          <div className="mt-4">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  onClick={() => setSelectedCategory(category)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
+                    selectedCategory === category
+                      ? 'bg-yellow-500 text-black border-2 border-yellow-500'
+                      : 'bg-gray-900 text-gray-300 border border-gray-700 hover:bg-gray-800'
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -569,15 +864,11 @@ export default function MarketsList({ onSelectMarket }) {
                       {/* Title */}
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
-                          {market.imageUrl ? (
-                            <MarketImage 
-                              src={market.imageUrl} 
-                              alt={market.title || 'Market'}
-                              fallbackIcon={market.icon}
-                            />
-                          ) : market.icon ? (
-                            <span className="text-xl flex-shrink-0">{market.icon}</span>
-                          ) : null}
+                          <MarketImage 
+                            market={market}
+                            alt={market.title || 'Market'}
+                            fallbackIcon={market.icon}
+                          />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-white truncate">
                               {market.title || market.question || `Market ${market.id}`}
@@ -660,16 +951,12 @@ export default function MarketsList({ onSelectMarket }) {
                 >
                   {/* Image/Icon */}
                   <div className="mb-3 flex justify-center">
-                    {market.imageUrl ? (
-                      <MarketImage 
-                        src={market.imageUrl} 
-                        alt={market.title || 'Market'}
-                        fallbackIcon={market.icon}
-                        size="large"
-                      />
-                    ) : market.icon ? (
-                      <div className="text-4xl text-center mb-3">{market.icon}</div>
-                    ) : null}
+                    <MarketImage 
+                      market={market}
+                      alt={market.title || 'Market'}
+                      fallbackIcon={market.icon}
+                      size="large"
+                    />
                   </div>
 
                   {/* Title */}

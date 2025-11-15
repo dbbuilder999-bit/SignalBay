@@ -5,6 +5,7 @@ import PredictionChart from './components/PredictionChart'
 import TradingTabs from './components/TradingTabs'
 import OrderPanel from './components/OrderPanel'
 import MarketsList from './components/MarketsList'
+import EventsList from './components/EventsList'
 import TruncatedText from './components/TruncatedText'
 import LandingPage from './components/LandingPage'
 // Polymarket is the source of truth for market data
@@ -12,6 +13,38 @@ import { polymarketService } from './services/PolymarketService'
 
 // Always use Polymarket service for real data
 const dataService = polymarketService
+
+// Component to handle market header image with fallback to icon
+function MarketHeaderImage({ market }) {
+  const [imageError, setImageError] = useState(false)
+  
+  // Check multiple possible field names for image URL
+  const imageUrl = market?.imageUrl || 
+                   market?.image || 
+                   market?.thumbnail || 
+                   market?.image_url ||
+                   market?.thumbnailUrl ||
+                   market?.thumbnail_url ||
+                   null
+  
+  // Only use if it's a valid URL
+  const hasValidImage = imageUrl && 
+                       typeof imageUrl === 'string' && 
+                       (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))
+  
+  if (hasValidImage && !imageError) {
+    return (
+      <img
+        src={imageUrl}
+        alt={market?.title || 'Market'}
+        className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+        onError={() => setImageError(true)}
+      />
+    )
+  }
+  
+  return <span className="text-3xl flex-shrink-0">{market?.icon || '📊'}</span>
+}
 
 export default function SignalBay() {
   const [showLanding, setShowLanding] = useState(() => {
@@ -22,8 +55,9 @@ export default function SignalBay() {
       return true
     }
   })
-  const [showEvents, setShowEvents] = useState(true) // Show events list by default
+  const [viewMode, setViewMode] = useState('markets') // 'events' | 'markets' | 'trade'
   const [selectedMarket, setSelectedMarket] = useState(null)
+  const [selectedEvent, setSelectedEvent] = useState(null) // Track selected event for filtering markets
   const [markets, setMarkets] = useState([])
   const [activeTab, setActiveTab] = useState('Related')
   const [darkMode, setDarkMode] = useState(true)
@@ -39,10 +73,10 @@ export default function SignalBay() {
   })
   const [showRulesModal, setShowRulesModal] = useState(false)
 
-  // Fetch markets on mount (only when not showing events list, since MarketsList handles its own data)
+  // Fetch markets on mount (only when in trade view, since MarketsList handles its own data)
   useEffect(() => {
-    // Don't fetch if showing events list - MarketsList handles its own data fetching
-    if (showEvents) {
+    // Don't fetch if showing events/markets list - MarketsList handles its own data fetching
+    if (viewMode !== 'trade') {
       setLoading(false)
       return
     }
@@ -64,7 +98,7 @@ export default function SignalBay() {
     }
 
     fetchMarkets()
-  }, [showEvents])
+  }, [viewMode])
 
   // Save watchlist to localStorage whenever it changes
   useEffect(() => {
@@ -141,7 +175,7 @@ export default function SignalBay() {
       console.error('Error saving visit status:', error)
     }
     setShowLanding(false)
-    setShowEvents(true)
+    setViewMode('markets')
   }
 
   // Show landing page if not visited before
@@ -155,16 +189,24 @@ export default function SignalBay() {
       <nav className="sticky top-0 z-50 bg-[#0a0d14] border-b border-white/10 px-6 py-4">
         <div className="flex justify-between items-center max-w-[1920px] mx-auto">
           <div className="flex items-center gap-8">
-            <img 
-              src="/assets/signalbay-logo.png" 
-              alt="SignalBay" 
-              className="h-16 w-auto"
-            />
+            <button
+              onClick={() => {
+                setViewMode('markets')
+                setSelectedEvent(null) // Clear event filter when clicking logo
+              }}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              <img 
+                src="/assets/signalbay-logo.png" 
+                alt="SignalBay" 
+                className="h-16 w-auto"
+              />
+            </button>
             <div className="flex items-center gap-6">
               <button
-                onClick={() => setShowEvents(true)}
+                onClick={() => setViewMode('events')}
                 className={`transition text-sm ${
-                  showEvents
+                  viewMode === 'events'
                     ? 'text-white font-semibold'
                     : 'text-gray-300 hover:text-white'
                 }`}
@@ -172,9 +214,22 @@ export default function SignalBay() {
                 Events
               </button>
               <button
-                onClick={() => setShowEvents(false)}
+                onClick={() => {
+                  setViewMode('markets')
+                  setSelectedEvent(null) // Clear event filter when switching to markets
+                }}
                 className={`transition text-sm ${
-                  !showEvents
+                  viewMode === 'markets'
+                    ? 'text-white font-semibold'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Markets
+              </button>
+              <button
+                onClick={() => setViewMode('trade')}
+                className={`transition text-sm ${
+                  viewMode === 'trade'
                     ? 'text-white font-semibold'
                     : 'text-gray-300 hover:text-white'
                 }`}
@@ -189,8 +244,90 @@ export default function SignalBay() {
         </div>
       </nav>
 
-      {showEvents ? (
+      {viewMode === 'events' ? (
+        <EventsList 
+          onSelectEvent={async (event) => {
+            // When an event is clicked, fetch markets for that event
+            try {
+              let eventMarkets = []
+              
+              // First, check if event has markets directly
+              if (event.markets && Array.isArray(event.markets) && event.markets.length > 0) {
+                eventMarkets = event.markets
+              } else {
+                // Otherwise, search for markets using event title or slug
+                const searchQuery = event.slug || event.title || event.question || event.name
+                if (searchQuery) {
+                  const searchResults = await dataService.searchMarkets(searchQuery, {
+                    limit_per_type: 100,
+                    search_tags: true,
+                    sort: 'relevance',
+                  })
+                  
+                  // Filter results to match event more closely
+                  eventMarkets = searchResults.filter(market => {
+                    const marketTitle = (market.title || market.question || '').toLowerCase()
+                    const marketDescription = (market.description || '').toLowerCase()
+                    const eventTitle = (event.title || event.question || event.name || '').toLowerCase()
+                    const eventSlug = (event.slug || '').toLowerCase()
+                    
+                    return marketTitle.includes(eventTitle) || 
+                           marketDescription.includes(eventTitle) ||
+                           (eventSlug && (marketTitle.includes(eventSlug) || marketDescription.includes(eventSlug)))
+                  })
+                }
+              }
+              
+              // If exactly one market, go straight to trade view
+              if (eventMarkets.length === 1) {
+                let market = eventMarkets[0]
+                // Ensure market has an id
+                if (!market.id) {
+                  market.id = market.conditionId || market.slug || `event-market-${Date.now()}`
+                }
+                // If market doesn't have prices, try to fetch full market data
+                if (!market.yesPrice || !market.noPrice) {
+                  try {
+                    const fullMarket = await dataService.getMarket(market.id)
+                    if (fullMarket) {
+                      market = fullMarket
+                    }
+                  } catch (error) {
+                    console.warn('Could not fetch full market data, using event market:', error)
+                  }
+                }
+                // Ensure prices have defaults
+                if (!market.yesPrice) market.yesPrice = 50
+                if (!market.noPrice) market.noPrice = 50
+                // Add market to markets list if not already present
+                setMarkets(prev => {
+                  const exists = prev.find(m => m.id === market.id)
+                  if (exists) return prev
+                  return [market, ...prev]
+                })
+                setSelectedMarket(market)
+                setViewMode('trade')
+              } else if (eventMarkets.length > 1) {
+                // Multiple markets - show markets list filtered by event
+                setSelectedEvent(event)
+                setViewMode('markets')
+              } else {
+                // No markets found - show markets list with event filter (user can search)
+                setSelectedEvent(event)
+                setViewMode('markets')
+              }
+            } catch (error) {
+              console.error('Error fetching markets for event:', error)
+              // On error, still show markets view with event filter
+              setSelectedEvent(event)
+              setViewMode('markets')
+            }
+          }}
+        />
+      ) : viewMode === 'markets' ? (
         <MarketsList 
+          eventFilter={selectedEvent}
+          onClearEventFilter={() => setSelectedEvent(null)}
           onSelectMarket={(market) => {
             // Add market to markets list if not already present
             setMarkets(prev => {
@@ -199,7 +336,7 @@ export default function SignalBay() {
               return [market, ...prev]
             })
             setSelectedMarket(market)
-            setShowEvents(false) // Switch to trade view
+            setViewMode('trade') // Switch to trade view
           }}
         />
       ) : (
@@ -223,24 +360,42 @@ export default function SignalBay() {
             <>
               {/* Market Header */}
               <div className="bg-[#0a0d14] border-b border-white/10 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className="text-3xl">{selectedMarket.icon}</span>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h2 className="text-2xl font-bold text-white">{selectedMarket.title}</h2>
-                        {(selectedMarket.closed === true || selectedMarket.closed === 'true' || 
-                          (selectedMarket.polymarketData && selectedMarket.polymarketData.closed === true)) && (
-                          <span className="px-3 py-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/50 rounded-full">
-                            🔒 Closed
-                          </span>
-                        )}
-                      </div>
-                      <TruncatedText 
-                        text={selectedMarket.description} 
-                        maxLength={200}
-                        className="max-w-3xl"
-                      />
+                <div className="flex items-start gap-4">
+                  <MarketHeaderImage market={selectedMarket} />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h2 className="text-2xl font-bold text-white">{selectedMarket.title}</h2>
+                      {(selectedMarket.closed === true || selectedMarket.closed === 'true' || 
+                        (selectedMarket.polymarketData && selectedMarket.polymarketData.closed === true)) && (
+                        <span className="px-3 py-1 text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/50 rounded-full">
+                          🔒 Closed
+                        </span>
+                      )}
+                    </div>
+                    <TruncatedText 
+                      text={selectedMarket.description} 
+                      maxLength={200}
+                      className="max-w-3xl"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-4">
+                  <div className="flex items-center gap-6">
+                    <div>
+                      <span className="text-xs text-gray-400">24h Volume</span>
+                      <p className="text-lg font-semibold text-white">
+                        {selectedMarket.volume >= 1000000 
+                          ? `$${(selectedMarket.volume / 1000000).toFixed(2)}M`
+                          : `$${(selectedMarket.volume / 1000).toFixed(2)}K`}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-400">End Date</span>
+                      <p className="text-lg font-semibold text-white">
+                        {selectedMarket.endDate 
+                          ? new Date(selectedMarket.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                          : 'N/A'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -272,24 +427,6 @@ export default function SignalBay() {
                         }`} 
                       />
                     </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6 mt-4">
-                  <div>
-                    <span className="text-xs text-gray-400">24h Volume</span>
-                    <p className="text-lg font-semibold text-white">
-                      {selectedMarket.volume >= 1000000 
-                        ? `$${(selectedMarket.volume / 1000000).toFixed(2)}M`
-                        : `$${(selectedMarket.volume / 1000).toFixed(2)}K`}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-400">End Date</span>
-                    <p className="text-lg font-semibold text-white">
-                      {selectedMarket.endDate 
-                        ? new Date(selectedMarket.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                        : 'N/A'}
-                    </p>
                   </div>
                 </div>
               </div>

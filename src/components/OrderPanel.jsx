@@ -201,7 +201,7 @@ export default function OrderPanel({ market }) {
                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
             } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            Yes {market.yesPrice.toFixed(1)}¢
+            Yes {(market.yesPrice || 50).toFixed(1)}¢
           </button>
           <button
             onClick={() => setOutcome('No')}
@@ -212,7 +212,7 @@ export default function OrderPanel({ market }) {
                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
             } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            No {market.noPrice.toFixed(1)}¢
+            No {(market.noPrice || 50).toFixed(1)}¢
           </button>
         </div>
       </div>

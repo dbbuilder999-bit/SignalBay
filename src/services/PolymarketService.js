@@ -145,6 +145,17 @@ class PolymarketService {
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`Polymarket API error: ${response.status}`, errorText)
+        
+        // If it's a validation error with tag_id, try without tag_id
+        if (response.status === 422 && errorText.includes('tag_id')) {
+          console.warn('[PolymarketService] tag_id validation error, retrying without tag_id filter')
+          // Remove tag_id and related_tags from options and retry
+          const retryOptions = { ...options }
+          delete retryOptions.tag_id
+          delete retryOptions.related_tags
+          return this.getMarkets(retryOptions)
+        }
+        
         // Throw error instead of returning fallback - we want REAL data only
         throw new Error(`Polymarket API error: ${response.status} - ${errorText}`)
       }
