@@ -138,6 +138,34 @@ export default function OrderPanel({ market }) {
 
       setOrderStatus({ success: true, order })
       setAmount('0')
+      
+      // Add position to portfolio
+      try {
+        const saved = localStorage.getItem('signalbay-portfolio')
+        const portfolio = saved ? JSON.parse(saved) : { positions: [], history: [] }
+        
+        const newPosition = {
+          id: `pos-${Date.now()}-${order.id || Math.random()}`,
+          marketId: market.id,
+          marketTitle: market.title || market.question,
+          side: side,
+          outcome: outcome,
+          entryPrice: priceNum,
+          currentYesPrice: market.yesPrice || 50,
+          currentNoPrice: market.noPrice || 50,
+          currentPrice: outcome === 'Yes' ? (market.yesPrice || 50) : (market.noPrice || 50),
+          quantity: parseFloat(shares),
+          timestamp: Date.now(),
+          orderId: order.id,
+          market: market
+        }
+        
+        portfolio.positions = [...(portfolio.positions || []), newPosition]
+        localStorage.setItem('signalbay-portfolio', JSON.stringify(portfolio))
+      } catch (error) {
+        console.error('Error saving position to portfolio:', error)
+      }
+      
       alert(`Order placed successfully! Order ID: ${order.id || 'N/A'}`)
     } catch (error) {
       console.error('Error placing order:', error)
