@@ -217,6 +217,13 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('Trending')
   const [viewMode, setViewMode] = useState('list') // 'list' or 'tile'
+  const [showFilterModal, setShowFilterModal] = useState(false)
+  const [filters, setFilters] = useState({
+    volume24h: null,
+    totalVolume: null,
+    liquidity: null,
+    endDate: null,
+  })
   const categoryCacheRef = useRef({}) // Cache markets by category using ref to avoid dependency issues
   const sportsTagIdsRef = useRef(null) // Cache sports tag IDs
   const tagsRef = useRef(null) // Cache tags data for category-to-tag_id mapping
@@ -674,8 +681,52 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
     return [...openMarkets, ...closedMarkets]
   }
 
+  // Apply filters to markets
+  const applyFilters = (marketsArray) => {
+    return marketsArray.filter(market => {
+      // 24hr Volume filter
+      if (filters.volume24h) {
+        const volume24h = market.volume24h || market.volume || 0
+        const threshold = parseFloat(filters.volume24h.replace(/[^0-9.]/g, '')) * (filters.volume24h.includes('M') ? 1000000 : 1000)
+        if (volume24h < threshold) return false
+      }
+
+      // Total Volume filter
+      if (filters.totalVolume) {
+        const totalVolume = market.volume || 0
+        const threshold = parseFloat(filters.totalVolume.replace(/[^0-9.]/g, '')) * (filters.totalVolume.includes('M') ? 1000000 : 1000)
+        if (totalVolume < threshold) return false
+      }
+
+      // Liquidity filter
+      if (filters.liquidity) {
+        const liquidity = market.liquidity || market.volume || 0
+        const threshold = parseFloat(filters.liquidity.replace(/[^0-9.]/g, '')) * (filters.liquidity.includes('K') ? 1000 : 1)
+        if (filters.liquidity.startsWith('<')) {
+          if (liquidity >= threshold) return false
+        } else {
+          if (liquidity < threshold) return false
+        }
+      }
+
+      // End Date filter
+      if (filters.endDate && market.endDate) {
+        const endDate = new Date(market.endDate)
+        const now = new Date()
+        const daysUntilEnd = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24))
+        const maxDays = parseFloat(filters.endDate.replace(/[^0-9.]/g, ''))
+        if (daysUntilEnd > maxDays) return false
+      }
+
+      return true
+    })
+  }
+
   // Filter and sort: open markets first, sorted by volume (most traded first)
-  const filteredMarkets = sortMarkets(markets)
+  const filteredMarkets = sortMarkets(applyFilters(markets))
+
+  // Count active filters
+  const activeFilterCount = Object.values(filters).filter(f => f !== null).length
 
   if (loading) {
     return (
@@ -770,9 +821,17 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                 />
               </div>
               {/* Filter Button */}
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg hover:bg-gray-800 transition">
+              <button 
+                onClick={() => setShowFilterModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg hover:bg-gray-800 transition relative"
+              >
                 <Filter className="h-4 w-4 text-gray-400" />
                 <span className="text-sm text-gray-300">Filter</span>
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -859,6 +918,7 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                   return (
                     <tr
                       key={market.id}
+                      onClick={() => onSelectMarket && onSelectMarket(market)}
                       className="border-b border-gray-900 hover:bg-gray-900/50 transition cursor-pointer"
                     >
                       {/* Title */}
@@ -923,7 +983,10 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
                       {/* Action */}
                       <td className="py-4 px-4 text-center">
                         <button 
-                          onClick={() => onSelectMarket && onSelectMarket(market)}
+                          onClick={(e) => {
+                            e.stopPropagation() // Prevent row click
+                            onSelectMarket && onSelectMarket(market)
+                          }}
                           className="px-4 py-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-600 transition font-semibold text-sm"
                         >
                           Trade
@@ -1005,6 +1068,137 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
           </div>
         )}
       </div>
+
+      {/* Filter Modal */}
+      {showFilterModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowFilterModal(false)}
+        >
+          <div 
+            className="bg-[#0a0d14] border border-white/20 rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <h2 className="text-xl font-bold text-white">Filter Markets</h2>
+              <button
+                onClick={() => {
+                  setFilters({ volume24h: null, totalVolume: null, liquidity: null, endDate: null })
+                }}
+                className="text-sm text-gray-400 hover:text-white transition"
+              >
+                Clear All
+              </button>
+            </div>
+
+            {/* Filter Options */}
+            <div className="p-6 space-y-6">
+              {/* 24hr Volume */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-3">24hr Volume</label>
+                <div className="flex flex-wrap gap-2">
+                  {['>10K', '>25K', '>50K', '>100K', '>500K', '>1M'].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setFilters(prev => ({
+                        ...prev,
+                        volume24h: prev.volume24h === option ? null : option
+                      }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                        filters.volume24h === option
+                          ? 'bg-yellow-500 text-black'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total Volume */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-3">Total Volume</label>
+                <div className="flex flex-wrap gap-2">
+                  {['>50K', '>100K', '>250K', '>500K', '>1M', '>5M', '>10M'].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setFilters(prev => ({
+                        ...prev,
+                        totalVolume: prev.totalVolume === option ? null : option
+                      }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                        filters.totalVolume === option
+                          ? 'bg-yellow-500 text-black'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Liquidity */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-3">Liquidity</label>
+                <div className="flex flex-wrap gap-2">
+                  {['<100', '<1K', '>1K', '>5K', '>10K', '>50K', '>100K', '>250K'].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setFilters(prev => ({
+                        ...prev,
+                        liquidity: prev.liquidity === option ? null : option
+                      }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                        filters.liquidity === option
+                          ? 'bg-yellow-500 text-black'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* End Date */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-3">End Date</label>
+                <div className="flex flex-wrap gap-2">
+                  {['<1 day', '<3 days', '<5 days', '<7 days', '<14 days'].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setFilters(prev => ({
+                        ...prev,
+                        endDate: prev.endDate === option ? null : option
+                      }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                        filters.endDate === option
+                          ? 'bg-yellow-500 text-black'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end p-6 border-t border-white/10">
+              <button
+                onClick={() => setShowFilterModal(false)}
+                className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-semibold"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
