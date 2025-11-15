@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Star } from 'lucide-react'
+import { Search, Star, Twitter } from 'lucide-react'
 import MarketSidebar from './components/MarketSidebar'
 import PredictionChart from './components/PredictionChart'
 import TradingTabs from './components/TradingTabs'
@@ -8,8 +8,10 @@ import MarketsList from './components/MarketsList'
 import EventsList from './components/EventsList'
 import TruncatedText from './components/TruncatedText'
 import LandingPage from './components/LandingPage'
+import LoginModal from './components/LoginModal'
 // Polymarket is the source of truth for market data
 import { polymarketService } from './services/PolymarketService'
+import { walletService } from './services/WalletService'
 
 // Always use Polymarket service for real data
 const dataService = polymarketService
@@ -47,6 +49,8 @@ function MarketHeaderImage({ market }) {
 }
 
 export default function SignalBay() {
+  const [walletAddress, setWalletAddress] = useState(null)
+  const [showLoginModal, setShowLoginModal] = useState(false)
   const [showLanding, setShowLanding] = useState(() => {
     // Check if user has visited before (stored in localStorage)
     try {
@@ -60,7 +64,6 @@ export default function SignalBay() {
   const [selectedEvent, setSelectedEvent] = useState(null) // Track selected event for filtering markets
   const [markets, setMarkets] = useState([])
   const [activeTab, setActiveTab] = useState('Related')
-  // Dark mode is the default and only theme - removed toggle as it wasn't fully implemented
   const [loading, setLoading] = useState(true)
   const [watchlist, setWatchlist] = useState(() => {
     // Load watchlist from localStorage on mount
@@ -99,6 +102,38 @@ export default function SignalBay() {
 
     fetchMarkets()
   }, [viewMode])
+
+  // Check wallet connection on mount
+  useEffect(() => {
+    const checkWalletConnection = () => {
+      if (walletService.isConnected()) {
+        setWalletAddress(walletService.getAddress())
+      }
+    }
+    checkWalletConnection()
+
+    // Listen for wallet account changes
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length === 0) {
+          walletService.disconnect()
+          setWalletAddress(null)
+        } else {
+          setWalletAddress(accounts[0])
+        }
+      })
+
+      window.ethereum.on('chainChanged', () => {
+        window.location.reload()
+      })
+    }
+  }, [])
+
+  // Handle wallet connection
+  const handleWalletConnect = (result) => {
+    setWalletAddress(result.address)
+    console.log('Wallet connected:', result.address)
+  }
 
   // Save watchlist to localStorage whenever it changes
   useEffect(() => {
@@ -185,6 +220,13 @@ export default function SignalBay() {
 
   return (
     <div className="min-h-screen bg-[#0a0d14] text-gray-100">
+      {/* Login Modal */}
+      <LoginModal 
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onConnect={handleWalletConnect}
+      />
+
       {/* Top Navigation Bar */}
       <nav className="sticky top-0 z-50 bg-[#0a0d14] border-b border-white/10 px-6 py-4">
         <div className="flex justify-between items-center max-w-[1920px] mx-auto">
@@ -238,9 +280,32 @@ export default function SignalBay() {
               </button>
             </div>
           </div>
-          <button className="px-6 py-2 bg-yellow-500 text-black rounded-lg font-semibold hover:bg-yellow-600 transition">
-            Sign In
-          </button>
+          
+          {/* Wallet Connection Button - Top Right */}
+          {walletAddress ? (
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-500/20 border border-green-500/50 rounded-lg">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm text-green-400 font-medium">
+                {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              </span>
+              <button
+                onClick={() => {
+                  walletService.disconnect()
+                  setWalletAddress(null)
+                }}
+                className="ml-2 text-xs text-gray-400 hover:text-white"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="px-4 py-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-600 transition font-semibold text-sm"
+            >
+              Connect Wallet
+            </button>
+          )}
         </div>
       </nav>
 
@@ -340,7 +405,7 @@ export default function SignalBay() {
           }}
         />
       ) : (
-        <div className="flex max-w-[1920px] mx-auto" style={{ height: 'calc(100vh - 73px)' }}>
+        <div className="flex max-w-[1920px] mx-auto" style={{ height: 'calc(100vh - 73px)', paddingBottom: '60px' }}>
         {/* Left Sidebar */}
         <MarketSidebar
           markets={markets}
@@ -397,34 +462,34 @@ export default function SignalBay() {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <button 
-                      onClick={() => setShowRulesModal(true)}
-                      className="px-4 py-2 text-sm border border-white/20 rounded-lg hover:bg-white/5 transition"
-                    >
-                      Rules
-                    </button>
-                    <button 
-                      onClick={() => {
-                        if (selectedMarket) {
-                          console.log(`[Watchlist] Toggling market: ${selectedMarket.id}, currently in watchlist: ${isInWatchlist(selectedMarket.id)}`)
-                          toggleWatchlist(selectedMarket.id)
-                        }
-                      }}
-                      className={`p-2 rounded-lg transition ${
-                        selectedMarket && isInWatchlist(selectedMarket.id)
-                          ? 'bg-yellow-500/20 hover:bg-yellow-500/30'
-                          : 'hover:bg-white/5'
-                      }`}
-                      title={selectedMarket && isInWatchlist(selectedMarket.id) ? 'Remove from watchlist' : 'Add to watchlist'}
-                    >
-                      <Star 
-                        className={`h-5 w-5 transition ${
-                          selectedMarket && isInWatchlist(selectedMarket.id)
-                            ? 'text-yellow-400 fill-yellow-400'
-                            : 'text-gray-400'
-                        }`} 
-                      />
-                    </button>
+              <button 
+                onClick={() => setShowRulesModal(true)}
+                className="px-4 py-2 text-sm border border-white/20 rounded-lg hover:bg-white/5 transition"
+              >
+                Rules
+              </button>
+              <button 
+                onClick={() => {
+                  if (selectedMarket) {
+                    console.log(`[Watchlist] Toggling market: ${selectedMarket.id}, currently in watchlist: ${isInWatchlist(selectedMarket.id)}`)
+                    toggleWatchlist(selectedMarket.id)
+                  }
+                }}
+                className={`p-2 rounded-lg transition ${
+                  selectedMarket && isInWatchlist(selectedMarket.id)
+                    ? 'bg-yellow-500/20 hover:bg-yellow-500/30'
+                    : 'hover:bg-white/5'
+                }`}
+                title={selectedMarket && isInWatchlist(selectedMarket.id) ? 'Remove from watchlist' : 'Add to watchlist'}
+              >
+                <Star 
+                  className={`h-5 w-5 transition ${
+                    selectedMarket && isInWatchlist(selectedMarket.id)
+                      ? 'text-yellow-400 fill-yellow-400'
+                      : 'text-gray-400'
+                  }`} 
+                />
+              </button>
                   </div>
                 </div>
               </div>
@@ -553,6 +618,23 @@ export default function SignalBay() {
           </div>
         </div>
       )}
+
+      {/* Bottom Bar - Always Visible */}
+      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[#0a0d14] border-t border-white/10 px-6 py-3">
+        <div className="flex justify-between items-center max-w-[1920px] mx-auto">
+          <div className="flex items-center gap-4">
+            <a
+              href="https://twitter.com/yourusername"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-gray-400 hover:text-white transition"
+            >
+              <Twitter className="h-5 w-5" />
+              <span className="text-sm">Follow us on Twitter</span>
+            </a>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
