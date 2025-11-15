@@ -21,7 +21,7 @@ function MarketImage({ src, alt, fallbackIcon }) {
   )
 }
 
-export default function MarketSidebar({ markets, selectedMarket, onSelectMarket, activeTab, onTabChange, darkMode, onToggleDarkMode, watchlist = [], isInWatchlist }) {
+export default function MarketSidebar({ markets, selectedMarket, onSelectMarket, activeTab, onTabChange, watchlist = [], isInWatchlist }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState(null) // null = no search, [] = search with no results, [...] = search results
   const [isSearching, setIsSearching] = useState(false)
@@ -259,7 +259,7 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
 
   /**
    * Sort markets: open markets first, then closed markets
-   * Within each group, sort by endDate (ascending - earliest dates first)
+   * Within each group, sort by volume (24hr volume first, then total volume) - most traded first
    */
   const sortMarkets = (marketsArray) => {
     if (!Array.isArray(marketsArray) || marketsArray.length === 0) {
@@ -278,25 +278,25 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
       }
     })
 
-    // Sort function: by endDate (ascending - earliest first)
-    const sortByEndDate = (a, b) => {
-      const dateA = a.endDate ? new Date(a.endDate).getTime() : Infinity
-      const dateB = b.endDate ? new Date(b.endDate).getTime() : Infinity
+    // Sort function: by volume (24hr volume first, then total volume) - descending (most traded first)
+    const sortByVolume = (a, b) => {
+      // Prioritize 24hr volume, fallback to total volume
+      const volumeA = a.volume24h || a.volume || 0
+      const volumeB = b.volume24h || b.volume || 0
       
-      // If both have dates, sort ascending (earliest first)
-      if (dateA !== Infinity && dateB !== Infinity) {
-        return dateA - dateB
+      // If volumes are equal, use total volume as tiebreaker
+      if (volumeA === volumeB) {
+        const totalVolumeA = a.volume || 0
+        const totalVolumeB = b.volume || 0
+        return totalVolumeB - totalVolumeA // Descending
       }
-      // Markets without dates go to the end
-      if (dateA === Infinity && dateB === Infinity) return 0
-      if (dateA === Infinity) return 1
-      if (dateB === Infinity) return -1
-      return 0
+      
+      return volumeB - volumeA // Descending (most traded first)
     }
 
-    // Sort each group by endDate
-    openMarkets.sort(sortByEndDate)
-    closedMarkets.sort(sortByEndDate)
+    // Sort each group by volume
+    openMarkets.sort(sortByVolume)
+    closedMarkets.sort(sortByVolume)
 
     // Return open markets first, then closed markets
     return [...openMarkets, ...closedMarkets]
@@ -342,8 +342,12 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
       marketsToDisplay = []
     }
   } else if (activeTab === 'Trending') {
-    // For Trending, show markets sorted by volume (already sorted by endDate from API)
-    marketsToDisplay = [...markets].sort((a, b) => (b.volume || 0) - (a.volume || 0))
+    // For Trending, show markets sorted by volume (24hr volume first, then total volume) - most traded first
+    marketsToDisplay = [...markets].sort((a, b) => {
+      const volumeA = a.volume24h || a.volume || 0
+      const volumeB = b.volume24h || b.volume || 0
+      return volumeB - volumeA // Descending (most traded first)
+    })
   } else if (activeTab === 'Related') {
     // For Related, use fetched related markets, fallback to category filter from existing markets
     if (relatedMarkets.length > 0) {
@@ -489,13 +493,7 @@ export default function MarketSidebar({ markets, selectedMarket, onSelectMarket,
       </div>
 
       {/* Footer Controls */}
-      <div className="p-4 border-t border-white/10 flex items-center justify-between">
-        <button
-          onClick={onToggleDarkMode}
-          className="p-2 hover:bg-white/5 rounded-lg transition"
-        >
-          {darkMode ? <Sun className="h-5 w-5 text-gray-400" /> : <Moon className="h-5 w-5 text-gray-400" />}
-        </button>
+      <div className="p-4 border-t border-white/10 flex items-center justify-end">
         <div className="flex gap-2">
           <button className="px-3 py-1 text-xs border border-white/20 rounded hover:bg-white/5 transition">
             EN

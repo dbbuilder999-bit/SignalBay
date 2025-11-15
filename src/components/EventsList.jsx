@@ -77,11 +77,19 @@ export default function EventsList({ onSelectEvent }) {
     if (activeTab === 'Watchlist') {
       filtered = filtered.filter(event => isInWatchlist(event.id))
     } else if (activeTab === 'Most Traded') {
-      // Sort by volume or number of markets (as proxy for trading activity)
+      // Sort by volume (24hr volume first, then total volume) - most traded first
       filtered.sort((a, b) => {
-        const volumeA = a.volume || a.totalVolume || (a.markets?.length || 0) * 1000
-        const volumeB = b.volume || b.totalVolume || (b.markets?.length || 0) * 1000
-        return volumeB - volumeA // Descending order
+        // Prioritize 24hr volume, fallback to total volume, then number of markets
+        const volumeA = a.volume24h || a.volume || a.totalVolume || (a.markets?.length || 0) * 1000
+        const volumeB = b.volume24h || b.volume || b.totalVolume || (b.markets?.length || 0) * 1000
+        return volumeB - volumeA // Descending order (most traded first)
+      })
+    } else {
+      // For "All" tab, also sort by volume (most traded first)
+      filtered.sort((a, b) => {
+        const volumeA = a.volume24h || a.volume || a.totalVolume || (a.markets?.length || 0) * 1000
+        const volumeB = b.volume24h || b.volume || b.totalVolume || (b.markets?.length || 0) * 1000
+        return volumeB - volumeA // Descending order (most traded first)
       })
     }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Star, Sun, Moon, MessageCircle } from 'lucide-react'
+import { Search, Star } from 'lucide-react'
 import MarketSidebar from './components/MarketSidebar'
 import PredictionChart from './components/PredictionChart'
 import TradingTabs from './components/TradingTabs'
@@ -60,7 +60,7 @@ export default function SignalBay() {
   const [selectedEvent, setSelectedEvent] = useState(null) // Track selected event for filtering markets
   const [markets, setMarkets] = useState([])
   const [activeTab, setActiveTab] = useState('Related')
-  const [darkMode, setDarkMode] = useState(true)
+  // Dark mode is the default and only theme - removed toggle as it wasn't fully implemented
   const [loading, setLoading] = useState(true)
   const [watchlist, setWatchlist] = useState(() => {
     // Load watchlist from localStorage on mount
@@ -184,7 +184,7 @@ export default function SignalBay() {
   }
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-[#0a0d14]' : 'bg-gray-50'} text-gray-100`}>
+    <div className="min-h-screen bg-[#0a0d14] text-gray-100">
       {/* Top Navigation Bar */}
       <nav className="sticky top-0 z-50 bg-[#0a0d14] border-b border-white/10 px-6 py-4">
         <div className="flex justify-between items-center max-w-[1920px] mx-auto">
@@ -348,8 +348,6 @@ export default function SignalBay() {
           onSelectMarket={setSelectedMarket}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          darkMode={darkMode}
-          onToggleDarkMode={() => setDarkMode(!darkMode)}
           watchlist={watchlist}
           isInWatchlist={isInWatchlist}
         />
@@ -457,10 +455,6 @@ export default function SignalBay() {
       </div>
       )}
 
-      {/* Chat Icon */}
-      <button className="fixed bottom-6 right-6 w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center shadow-lg hover:bg-yellow-600 transition z-50">
-        <MessageCircle className="h-6 w-6 text-black" />
-      </button>
 
       {/* Rules Modal */}
       {showRulesModal && selectedMarket && (

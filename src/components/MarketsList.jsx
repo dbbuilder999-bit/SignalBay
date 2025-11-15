@@ -631,7 +631,7 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
 
   /**
    * Sort markets: open markets first, then closed markets
-   * Within each group, sort by endDate (ascending - earliest dates first)
+   * Within each group, sort by volume (24hr volume first, then total volume) - most traded first
    */
   const sortMarkets = (marketsArray) => {
     if (!Array.isArray(marketsArray) || marketsArray.length === 0) {
@@ -650,31 +650,31 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
       }
     })
 
-    // Sort function: by endDate (ascending - earliest first)
-    const sortByEndDate = (a, b) => {
-      const dateA = a.endDate ? new Date(a.endDate).getTime() : Infinity
-      const dateB = b.endDate ? new Date(b.endDate).getTime() : Infinity
+    // Sort function: by volume (24hr volume first, then total volume) - descending (most traded first)
+    const sortByVolume = (a, b) => {
+      // Prioritize 24hr volume, fallback to total volume
+      const volumeA = a.volume24h || a.volume || 0
+      const volumeB = b.volume24h || b.volume || 0
       
-      // If both have dates, sort ascending (earliest first)
-      if (dateA !== Infinity && dateB !== Infinity) {
-        return dateA - dateB
+      // If volumes are equal, use total volume as tiebreaker
+      if (volumeA === volumeB) {
+        const totalVolumeA = a.volume || 0
+        const totalVolumeB = b.volume || 0
+        return totalVolumeB - totalVolumeA // Descending
       }
-      // Markets without dates go to the end
-      if (dateA === Infinity && dateB === Infinity) return 0
-      if (dateA === Infinity) return 1
-      if (dateB === Infinity) return -1
-      return 0
+      
+      return volumeB - volumeA // Descending (most traded first)
     }
 
-    // Sort each group by endDate
-    openMarkets.sort(sortByEndDate)
-    closedMarkets.sort(sortByEndDate)
+    // Sort each group by volume
+    openMarkets.sort(sortByVolume)
+    closedMarkets.sort(sortByVolume)
 
     // Return open markets first, then closed markets
     return [...openMarkets, ...closedMarkets]
   }
 
-  // Filter and sort: open markets first, sorted by endDate
+  // Filter and sort: open markets first, sorted by volume (most traded first)
   const filteredMarkets = sortMarkets(markets)
 
   if (loading) {
