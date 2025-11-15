@@ -57,6 +57,16 @@ export default defineConfig({
           });
         },
       },
+      '/api/clob': {
+        target: 'https://clob.polymarket.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/clob/, ''),
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('CLOB proxy error', err);
+          });
+        },
+      },
     },
   },
 })

@@ -38,7 +38,9 @@ class PolymarketService {
     this.apiUrl = isDev 
       ? '/api/polymarket'  // Use Vite proxy in development
       : POLYMARKET_CONFIG.gammaApiUrl  // Direct API in production
-    this.clobUrl = POLYMARKET_CONFIG.clobApiUrl
+    this.clobUrl = isDev
+      ? '/api/clob'  // Use Vite proxy in development
+      : POLYMARKET_CONFIG.clobApiUrl  // Direct API in production
     // API key (optional - only for trading)
     this.apiKey = POLYMARKET_CONFIG.apiKey
     this.funderAddress = POLYMARKET_CONFIG.funderAddress
@@ -415,10 +417,11 @@ class PolymarketService {
         // Try fetching specific market by condition ID or tokens
         try {
           const response = await fetch(
-            `https://gamma-api.polymarket.com/markets?tokens=${marketId}&limit=1`,
+            `${this.apiUrl}/markets?tokens=${marketId}&limit=1`,
             {
               headers: {
                 'Accept': 'application/json',
+                'Content-Type': 'application/json',
               },
             }
           )
@@ -440,22 +443,239 @@ class PolymarketService {
   }
 
   /**
-   * Get price history for a market
+   * Get price history for a market using CLOB fills API
+   * This is the correct endpoint for Polymarket price history
    */
   async getPriceHistory(marketId, timeframe = '1D') {
     try {
+      // Get market to find the CLOB market ID and token IDs
       const market = await this.getMarket(marketId)
-      if (!market || !market.polymarketData?.yesTokenId) {
-        return this.generateMockHistory(market?.yesPrice || 50, timeframe)
+      if (!market) {
+        return this.generateMockHistory(50, timeframe)
       }
 
-      // Polymarket doesn't have a direct price history endpoint
-      // We'll generate mock history based on current price
-      // In a real implementation, you'd use WebSocket or polling
-      return this.generateMockHistory(market.yesPrice, timeframe)
+      // Get the yes token ID - this is what we need to filter fills
+      const yesTokenId = market.polymarketData?.yesTokenId || 
+                        market.yesTokenId ||
+                        (market.clobTokenIds && typeof market.clobTokenIds === 'object' && market.clobTokenIds.yes) ||
+                        (market.clobTokenIds && Array.isArray(market.clobTokenIds) && market.clobTokenIds[0]) ||
+                        null
+
+      // Use the market's ID as the CLOB market identifier
+      // The CLOB API uses the market ID (conditionId) for the market parameter
+      // Try multiple possible ID fields in order of preference
+      const clobMarketId = market.id || 
+                          market.polymarketData?.conditionId || 
+                          market.conditionId || 
+                          market.condition_id
+
+      if (!clobMarketId) {
+        // Fallback to mock if we can't find a valid market ID
+        return this.generateMockHistory(market.yesPrice || 50, timeframe)
+      }
+
+      // Fetch fills from CLOB API using the market ID
+      // Note: The API might return fills for all outcomes, so we need to filter by token_id
+      const url = `${this.clobUrl}/fills?market=${clobMarketId}&limit=10000`
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`CLOB API error: ${response.status}`)
+      }
+
+      const json = await response.json()
+
+      if (!json.fills || !Array.isArray(json.fills)) {
+        // If no fills, return mock history
+        return this.generateMockHistory(market.yesPrice || 50, timeframe)
+      }
+
+      // Debug: Log the first few fills to understand the structure
+      if (json.fills.length > 0) {
+        console.log('Sample fill structure:', json.fills[0])
+        console.log('Market yesTokenId:', yesTokenId)
+        console.log('Market yesPrice:', market.yesPrice)
+        console.log('Total fills:', json.fills.length)
+      }
+
+      // Convert fills to lightweight-charts format
+      // Filter for "yes" token fills - CLOB fills use token_id to identify the outcome
+      let yesFills = json.fills
+      
+      if (yesTokenId) {
+        // Filter by token ID if available (this is the most reliable method)
+        yesFills = json.fills.filter(fill => {
+          const fillTokenId = fill.token_id || fill.tokenId || fill.token
+          // Handle both string and number comparisons
+          return String(fillTokenId) === String(yesTokenId) || 
+                 Number(fillTokenId) === Number(yesTokenId)
+        })
+        
+        if (yesFills.length === 0) {
+          console.warn('No fills found for yesTokenId:', yesTokenId, 'Trying fallback methods...')
+        }
+      }
+      
+      // If no fills found by token ID, try fallback methods
+      if (yesFills.length === 0) {
+        // Fallback 1: Filter by outcome field (various formats)
+        yesFills = json.fills.filter(fill => {
+          const outcome = fill.outcome || fill.side || fill.type || ''
+          const outcomeLower = String(outcome).toLowerCase()
+          return outcomeLower === 'yes' || 
+                 outcomeLower === '1' || 
+                 outcomeLower === 'true'
+        })
+      }
+      
+      // Fallback 2: If still no fills, filter by price (yes prices are typically < 0.5)
+      if (yesFills.length === 0 && market.yesPrice && market.yesPrice < 50) {
+        yesFills = json.fills.filter(fill => {
+          const price = fill.price || fill.priceNum || fill.px || 0.5
+          return price < 0.5 // Yes prices are typically < 0.5 (50¢)
+        })
+      }
+      
+      // Final fallback: If still no fills, use all fills (not ideal but better than nothing)
+      if (yesFills.length === 0) {
+        console.warn('No yes fills found, using all fills as fallback')
+        yesFills = json.fills
+      }
+
+      // Convert fills → lightweight-charts format
+      const data = yesFills.map((fill) => {
+        // Handle different price field names
+        const price = fill.price || fill.priceNum || fill.px || 0.5
+        
+        // Ensure price is in 0-1 range (CLOB gives decimal prices)
+        const normalizedPrice = Math.max(0, Math.min(1, parseFloat(price)))
+        
+        // Handle timestamp - could be seconds or milliseconds
+        let timestamp = fill.timestamp || fill.time || fill.created_at || Date.now() / 1000
+        if (timestamp > 10000000000) {
+          // If timestamp is in milliseconds, convert to seconds
+          timestamp = Math.floor(timestamp / 1000)
+        }
+        
+        return {
+          time: Math.floor(timestamp), // Ensure it's in seconds
+          value: normalizedPrice * 100 // Chart needs 0-100, CLOB gives 0-1
+        }
+      })
+
+      // Sort by time (ascending)
+      data.sort((a, b) => a.time - b.time)
+
+      // Validate data against current market price
+      // If the most recent price is very different from current yesPrice, we might have wrong fills
+      if (data.length > 0 && market.yesPrice) {
+        const mostRecentPrice = data[data.length - 1].value
+        const currentPrice = market.yesPrice
+        const priceDiff = Math.abs(mostRecentPrice - currentPrice)
+        
+        // If the difference is more than 20¢, we might have the wrong outcome
+        if (priceDiff > 20) {
+          console.warn(`Price mismatch: Chart shows ${mostRecentPrice.toFixed(1)}¢ but market shows ${currentPrice.toFixed(1)}¢ for Yes. Possible wrong outcome filtering.`)
+          
+          // Try to find fills that match the current price better
+          // If current yesPrice is very low (< 10¢), we should have low prices
+          // If current yesPrice is very high (> 90¢), we should have high prices
+          if (currentPrice < 10) {
+            // Yes price is very low, so we want fills with low prices
+            const lowPriceFills = json.fills.filter(fill => {
+              const price = (fill.price || fill.priceNum || fill.px || 0.5) * 100
+              return price < 20 // Very low prices indicate Yes outcome
+            })
+            
+            if (lowPriceFills.length > 0) {
+              console.log('Trying low-price fills as Yes outcome...')
+              const correctedData = lowPriceFills.map((fill) => {
+                const price = fill.price || fill.priceNum || fill.px || 0.5
+                const normalizedPrice = Math.max(0, Math.min(1, parseFloat(price)))
+                let timestamp = fill.timestamp || fill.time || fill.created_at || Date.now() / 1000
+                if (timestamp > 10000000000) timestamp = Math.floor(timestamp / 1000)
+                return {
+                  time: Math.floor(timestamp),
+                  value: normalizedPrice * 100
+                }
+              }).sort((a, b) => a.time - b.time)
+              
+              // Check if this is better
+              if (correctedData.length > 0) {
+                const correctedRecentPrice = correctedData[correctedData.length - 1].value
+                if (Math.abs(correctedRecentPrice - currentPrice) < priceDiff) {
+                  console.log('Using corrected low-price fills')
+                  data.splice(0, data.length, ...correctedData)
+                }
+              }
+            }
+          } else if (currentPrice > 90) {
+            // Yes price is very high, so we want fills with high prices
+            const highPriceFills = json.fills.filter(fill => {
+              const price = (fill.price || fill.priceNum || fill.px || 0.5) * 100
+              return price > 80 // Very high prices indicate Yes outcome
+            })
+            
+            if (highPriceFills.length > 0) {
+              console.log('Trying high-price fills as Yes outcome...')
+              const correctedData = highPriceFills.map((fill) => {
+                const price = fill.price || fill.priceNum || fill.px || 0.5
+                const normalizedPrice = Math.max(0, Math.min(1, parseFloat(price)))
+                let timestamp = fill.timestamp || fill.time || fill.created_at || Date.now() / 1000
+                if (timestamp > 10000000000) timestamp = Math.floor(timestamp / 1000)
+                return {
+                  time: Math.floor(timestamp),
+                  value: normalizedPrice * 100
+                }
+              }).sort((a, b) => a.time - b.time)
+              
+              // Check if this is better
+              if (correctedData.length > 0) {
+                const correctedRecentPrice = correctedData[correctedData.length - 1].value
+                if (Math.abs(correctedRecentPrice - currentPrice) < priceDiff) {
+                  console.log('Using corrected high-price fills')
+                  data.splice(0, data.length, ...correctedData)
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Apply timeframe filter
+      const cutoff = {
+        '1H': 60 * 60,
+        '4H': 4 * 60 * 60,
+        '1D': 24 * 60 * 60,
+        '1W': 7 * 24 * 60 * 60,
+        '1M': 30 * 24 * 60 * 60,
+        'All': 999999999
+      }[timeframe] || 24 * 60 * 60
+
+      const now = Math.floor(Date.now() / 1000)
+      const filtered = data.filter(p => now - p.time <= cutoff)
+
+      // If we have data, return it; otherwise fallback to mock
+      if (filtered.length > 0) {
+        return filtered
+      }
+
+      // Fallback to mock if no data in timeframe
+      return this.generateMockHistory(market.yesPrice || 50, timeframe)
     } catch (error) {
-      console.error('Error fetching price history:', error)
-      return this.generateMockHistory(50, timeframe)
+      console.error('Error fetching price history from CLOB:', error)
+      // Fallback to mock history on error
+      try {
+        const market = await this.getMarket(marketId)
+        return this.generateMockHistory(market?.yesPrice || 50, timeframe)
+      } catch {
+        return this.generateMockHistory(50, timeframe)
+      }
     }
   }
 
@@ -560,7 +780,7 @@ class PolymarketService {
         try {
           const tokenId = market.polymarketData.yesTokenId
           const response = await fetch(
-            `https://clob.polymarket.com/book?token_id=${tokenId}`,
+            `${this.clobUrl}/book?token_id=${tokenId}`,
             {
               headers: {
                 'Accept': 'application/json',
