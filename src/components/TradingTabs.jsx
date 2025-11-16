@@ -43,8 +43,8 @@ export default function TradingTabs({ market }) {
   }
 
   return (
-    <div className="px-6">
-      <div className="flex border-b border-white/10">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex border-b border-white/10 flex-shrink-0">
         {tabs.map((tab) => (
           <button
             key={tab}
@@ -60,7 +60,7 @@ export default function TradingTabs({ market }) {
         ))}
       </div>
       
-      <div className="py-6">
+      <div className="flex-1 overflow-y-auto py-6">
         {activeTab === 'Order Book' ? (
           loading ? (
             <div className="text-center py-8">
@@ -68,9 +68,9 @@ export default function TradingTabs({ market }) {
               <p className="text-gray-400 text-sm">Loading order book...</p>
             </div>
           ) : orderBook ? (
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 gap-6 min-h-0">
               {/* Asks (Sell Orders) */}
-              <div className="flex flex-col h-[500px]">
+              <div className="flex flex-col" style={{ maxHeight: 'calc(100vh - 300px)' }}>
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/10 flex-shrink-0">
                   <h3 className="text-sm font-semibold text-red-400">Asks (Sell)</h3>
                   <div className="flex gap-4 text-xs text-gray-400">
@@ -111,7 +111,7 @@ export default function TradingTabs({ market }) {
               </div>
 
               {/* Bids (Buy Orders) */}
-              <div className="flex flex-col h-[500px]">
+              <div className="flex flex-col" style={{ maxHeight: 'calc(100vh - 300px)' }}>
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/10 flex-shrink-0">
                   <h3 className="text-sm font-semibold text-green-400">Bids (Buy)</h3>
                   <div className="flex gap-4 text-xs text-gray-400">

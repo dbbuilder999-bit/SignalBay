@@ -542,41 +542,43 @@ export default function SignalBay() {
           }}
         />
       ) : (
-        <div className="flex max-w-[1920px] mx-auto" style={{ height: 'calc(100vh - 73px)', paddingBottom: '60px' }}>
+        <div className="flex max-w-[1920px] mx-auto" style={{ height: 'calc(100vh - 73px)', overflow: 'hidden' }}>
         {/* Left Sidebar */}
-        <MarketSidebar
-          markets={markets}
-          selectedMarket={selectedMarket}
-          onSelectMarket={async (market) => {
-            setLoadingMarket(true)
-            try {
-              // If market doesn't have prices, try to fetch full market data
-              if (!market.yesPrice || !market.noPrice) {
-                try {
-                  const fullMarket = await dataService.getMarket(market.id)
-                  if (fullMarket) {
-                    market = fullMarket
+        <aside className="w-80 bg-[#0a0d14] border-r border-white/10 overflow-y-auto flex-shrink-0" style={{ height: 'calc(100vh - 73px)' }}>
+          <MarketSidebar
+            markets={markets}
+            selectedMarket={selectedMarket}
+            onSelectMarket={async (market) => {
+              setLoadingMarket(true)
+              try {
+                // If market doesn't have prices, try to fetch full market data
+                if (!market.yesPrice || !market.noPrice) {
+                  try {
+                    const fullMarket = await dataService.getMarket(market.id)
+                    if (fullMarket) {
+                      market = fullMarket
+                    }
+                  } catch (error) {
+                    // Continue with existing market data if fetch fails
                   }
-                } catch (error) {
-                  // Continue with existing market data if fetch fails
                 }
+                // Ensure prices have defaults
+                if (!market.yesPrice) market.yesPrice = 50
+                if (!market.noPrice) market.noPrice = 50
+                setSelectedMarket(market)
+              } finally {
+                setLoadingMarket(false)
               }
-              // Ensure prices have defaults
-              if (!market.yesPrice) market.yesPrice = 50
-              if (!market.noPrice) market.noPrice = 50
-              setSelectedMarket(market)
-            } finally {
-              setLoadingMarket(false)
-            }
-          }}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          watchlist={watchlist}
-          isInWatchlist={isInWatchlist}
-        />
+            }}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            watchlist={watchlist}
+            isInWatchlist={isInWatchlist}
+          />
+        </aside>
 
         {/* Central Trading Area */}
-        <main className="flex-1 flex flex-col border-r border-white/10 overflow-hidden relative">
+        <main className="flex-1 flex flex-col border-r border-white/10 overflow-y-auto relative min-h-0">
           {loadingMarket && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#0a0d14]/80 z-20">
               <div className="text-center">
@@ -698,12 +700,12 @@ export default function SignalBay() {
               </div>
 
               {/* Price Chart */}
-              <div className="flex-1 bg-[#0a0d14] border-b border-white/10">
+              <div className="flex-[2] bg-[#0a0d14] border-b border-white/10 min-h-0" style={{ minHeight: '600px' }}>
                 <PredictionChart market={selectedMarket} />
               </div>
 
               {/* Trading Tabs */}
-              <div className="bg-[#0a0d14] border-b border-white/10">
+              <div className="bg-[#0a0d14] border-b border-white/10 flex-1 flex-shrink-0" style={{ maxHeight: '400px', minHeight: '250px', overflow: 'hidden' }}>
                 <TradingTabs market={selectedMarket} />
               </div>
             </>

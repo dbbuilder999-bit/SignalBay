@@ -206,7 +206,7 @@ export default function PredictionChart({ market }) {
       </div>
 
       {/* Chart Container */}
-      <div ref={chartContainerRef} className="flex-1 w-full relative" style={{ minHeight: '400px' }}>
+      <div ref={chartContainerRef} className="flex-1 w-full relative" style={{ maxHeight: '400px' }}>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#0a0d14]/80 z-10">
             <div className="text-center">

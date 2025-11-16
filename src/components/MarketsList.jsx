@@ -362,10 +362,54 @@ export default function MarketsList({ onSelectMarket, eventFilter, onClearEventF
           
           // First, check if event has markets directly
           if (eventFilter.markets && Array.isArray(eventFilter.markets) && eventFilter.markets.length > 0) {
-            const transformedMarkets = eventFilter.markets.map(market => {
-              // Transform event market to our format if needed
-              return market.id ? market : { ...market, id: market.conditionId || market.slug || `event-market-${Date.now()}` }
-            })
+            // Fetch full market data for each market to ensure prices are populated
+            const fetchFullMarketData = async (market) => {
+              try {
+                // Ensure market has an ID
+                const marketId = market.id || market.conditionId || market.slug
+                if (marketId) {
+                  // Try to fetch full market data if prices are missing
+                  if (!market.yesPrice && !market.noPrice) {
+                    const fullMarket = await polymarketService.getMarket(marketId)
+                    if (fullMarket && (fullMarket.yesPrice !== undefined || fullMarket.noPrice !== undefined)) {
+                      return fullMarket
+                    }
+                  }
+                }
+              } catch (error) {
+                // If fetch fails, continue with original market data
+              }
+              
+              // Parse outcomePrices if it's a string
+              let yesPrice = market.yesPrice
+              let noPrice = market.noPrice
+              
+              if (!yesPrice && !noPrice && market.outcomePrices) {
+                try {
+                  const prices = typeof market.outcomePrices === 'string' 
+                    ? JSON.parse(market.outcomePrices) 
+                    : market.outcomePrices
+                  if (Array.isArray(prices) && prices.length >= 2) {
+                    yesPrice = parseFloat(prices[0]) * 100 // Convert from decimal to cents
+                    noPrice = parseFloat(prices[1]) * 100
+                  }
+                } catch (e) {
+                  // If parsing fails, use defaults
+                }
+              }
+              
+              // Return market with defaults if no prices
+              return {
+                ...market,
+                id: market.id || market.conditionId || market.slug || `event-market-${Date.now()}`,
+                yesPrice: yesPrice || 50,
+                noPrice: noPrice || 50
+              }
+            }
+            
+            const transformedMarkets = await Promise.all(
+              eventFilter.markets.map(fetchFullMarketData)
+            )
             setMarkets(transformedMarkets)
             setLoading(false)
             return
