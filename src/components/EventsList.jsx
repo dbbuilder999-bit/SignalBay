@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Star } from 'lucide-react'
 import { polymarketService } from '../services/PolymarketService'
 
-const eventTabs = ['All', 'Most Traded', 'Watchlist']
+const eventTabs = ['All', 'Watchlist']
 
 export default function EventsList({ onSelectEvent, eventWatchlist = [], toggleEventWatchlist, isEventInWatchlist }) {
   const [events, setEvents] = useState([])
@@ -55,9 +55,10 @@ export default function EventsList({ onSelectEvent, eventWatchlist = [], toggleE
         setLoading(true)
         setError(null)
         const eventsData = await polymarketService.getEvents({
-          order: 'id',
+          order: 'volume',
           ascending: false,
           closed: false,
+          featured: true,
           limit: 100
         })
         setEvents(eventsData)
@@ -92,22 +93,8 @@ export default function EventsList({ onSelectEvent, eventWatchlist = [], toggleE
         const eventId = event.id || event.slug || event.title
         return effectiveIsInWatchlist(eventId)
       })
-    } else if (activeTab === 'Most Traded') {
-      // Sort by volume (24hr volume first, then total volume) - most traded first
-      filtered.sort((a, b) => {
-        // Prioritize 24hr volume, fallback to total volume, then number of markets
-        const volumeA = a.volume24h || a.volume || a.totalVolume || (a.markets?.length || 0) * 1000
-        const volumeB = b.volume24h || b.volume || b.totalVolume || (b.markets?.length || 0) * 1000
-        return volumeB - volumeA // Descending order (most traded first)
-      })
-    } else {
-      // For "All" tab, also sort by volume (most traded first)
-      filtered.sort((a, b) => {
-        const volumeA = a.volume24h || a.volume || a.totalVolume || (a.markets?.length || 0) * 1000
-        const volumeB = b.volume24h || b.volume || b.totalVolume || (b.markets?.length || 0) * 1000
-        return volumeB - volumeA // Descending order (most traded first)
-      })
     }
+    // Events are already sorted by volume from the API, so no need to sort again
 
     return filtered
   }

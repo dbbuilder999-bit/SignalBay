@@ -693,30 +693,6 @@ export default function SignalBay() {
                   }`} 
                 />
               </button>
-              {selectedEvent && (
-                <button 
-                  onClick={() => {
-                    if (selectedEvent) {
-                      const eventId = selectedEvent.id || selectedEvent.slug || selectedEvent.title
-                      toggleEventWatchlist(eventId)
-                    }
-                  }}
-                  className={`p-2 rounded-lg transition ${
-                    selectedEvent && isEventInWatchlist(selectedEvent.id || selectedEvent.slug || selectedEvent.title)
-                      ? 'bg-yellow-500/20 hover:bg-yellow-500/30'
-                      : 'hover:bg-white/5'
-                  }`}
-                  title={selectedEvent && isEventInWatchlist(selectedEvent.id || selectedEvent.slug || selectedEvent.title) ? 'Remove event from watchlist' : 'Add event to watchlist'}
-                >
-                  <Star 
-                    className={`h-5 w-5 transition ${
-                      selectedEvent && isEventInWatchlist(selectedEvent.id || selectedEvent.slug || selectedEvent.title)
-                        ? 'text-yellow-400 fill-yellow-400'
-                        : 'text-gray-400'
-                    }`} 
-                  />
-                </button>
-              )}
                   </div>
                 </div>
               </div>

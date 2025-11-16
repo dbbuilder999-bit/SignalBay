@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Edit, Loader2 } from 'lucide-react'
 import { tradingService } from '../services/TradingService'
+import { polymarketService } from '../services/PolymarketService'
 import { OrderType } from '@polymarket/clob-client'
 
 export default function OrderPanel({ market }) {
@@ -13,6 +14,13 @@ export default function OrderPanel({ market }) {
   const [isConnected, setIsConnected] = useState(false)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderStatus, setOrderStatus] = useState(null)
+  const [clobPrices, setClobPrices] = useState({
+    yesBuy: null,
+    yesSell: null,
+    noBuy: null,
+    noSell: null
+  })
+  const [loadingPrices, setLoadingPrices] = useState(false)
 
   if (!market) {
     return (
@@ -26,9 +34,97 @@ export default function OrderPanel({ market }) {
   const isMarketClosed = market.closed === true || market.closed === 'true' || 
                          (market.polymarketData && market.polymarketData.closed === true)
 
-  const bestAsk = market.yesPrice || 50
-  const bestBid = market.noPrice || 50
-  const selectedOutcomePrice = outcome === 'Yes' ? (market.yesPrice || 50) : (market.noPrice || 50)
+  // Extract clobTokenIds
+  useEffect(() => {
+    const fetchClobPrices = async () => {
+      if (!market) return
+
+      let clobTokenIds = []
+      
+      if (market.clobTokenIds) {
+        if (Array.isArray(market.clobTokenIds)) {
+          clobTokenIds = market.clobTokenIds
+        } else if (typeof market.clobTokenIds === 'string') {
+          try {
+            const parsed = JSON.parse(market.clobTokenIds)
+            if (Array.isArray(parsed)) {
+              clobTokenIds = parsed
+            }
+          } catch {
+            clobTokenIds = [market.clobTokenIds]
+          }
+        }
+      }
+
+      if (clobTokenIds.length < 2) {
+        // Fallback to market prices if no clobTokenIds
+        setClobPrices({
+          yesBuy: market.yesPrice || 50,
+          yesSell: market.yesPrice || 50,
+          noBuy: market.noPrice || 50,
+          noSell: market.noPrice || 50
+        })
+        return
+      }
+
+      setLoadingPrices(true)
+      try {
+        // Fetch all prices in parallel
+        const [yesBuy, yesSell, noBuy, noSell] = await Promise.all([
+          polymarketService.getTokenPrice(clobTokenIds[0], 'BUY'),
+          polymarketService.getTokenPrice(clobTokenIds[0], 'SELL'),
+          polymarketService.getTokenPrice(clobTokenIds[1], 'BUY'),
+          polymarketService.getTokenPrice(clobTokenIds[1], 'SELL')
+        ])
+
+        setClobPrices({
+          yesBuy: yesBuy || market.yesPrice || 50,
+          yesSell: yesSell || market.yesPrice || 50,
+          noBuy: noBuy || market.noPrice || 50,
+          noSell: noSell || market.noPrice || 50
+        })
+      } catch (error) {
+        console.error('Error fetching CLOB prices:', error)
+        // Fallback to market prices
+        setClobPrices({
+          yesBuy: market.yesPrice || 50,
+          yesSell: market.yesPrice || 50,
+          noBuy: market.noPrice || 50,
+          noSell: market.noPrice || 50
+        })
+      } finally {
+        setLoadingPrices(false)
+      }
+    }
+
+    fetchClobPrices()
+    
+    // Refresh prices every 5 seconds
+    const interval = setInterval(fetchClobPrices, 5000)
+    return () => clearInterval(interval)
+  }, [market?.id])
+
+  // Update price when side or outcome changes
+  useEffect(() => {
+    if (clobPrices.yesBuy === null) return // Wait for prices to load
+
+    let newPrice
+    if (outcome === 'Yes') {
+      newPrice = side === 'Buy' ? clobPrices.yesBuy : clobPrices.yesSell
+    } else {
+      newPrice = side === 'Buy' ? clobPrices.noBuy : clobPrices.noSell
+    }
+
+    if (newPrice !== null) {
+      setPrice(newPrice.toFixed(1))
+    }
+  }, [side, outcome, clobPrices])
+
+  const bestAsk = outcome === 'Yes' ? (clobPrices.yesBuy || market.yesPrice || 50) : (clobPrices.noBuy || market.noPrice || 50)
+  const bestBid = outcome === 'Yes' ? (clobPrices.yesSell || market.yesPrice || 50) : (clobPrices.noSell || market.noPrice || 50)
+  const selectedOutcomePrice = outcome === 'Yes' 
+    ? (side === 'Buy' ? bestAsk : bestBid)
+    : (side === 'Buy' ? bestAsk : bestBid)
 
   const shares = amount && parseFloat(amount) > 0 ? (parseFloat(amount) / (selectedOutcomePrice / 100)).toFixed(2) : '0.00'
   const avgPrice = selectedOutcomePrice.toFixed(1)
@@ -228,7 +324,7 @@ export default function OrderPanel({ market }) {
                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
             } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            Yes {(market.yesPrice || 50).toFixed(1)}¢
+            Yes {loadingPrices ? '...' : (clobPrices.yesBuy || market.yesPrice || 50).toFixed(1)}¢
           </button>
           <button
             onClick={() => setOutcome('No')}
@@ -239,7 +335,7 @@ export default function OrderPanel({ market }) {
                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
             } ${isMarketClosed ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            No {(market.noPrice || 50).toFixed(1)}¢
+            No {loadingPrices ? '...' : (clobPrices.noBuy || market.noPrice || 50).toFixed(1)}¢
           </button>
         </div>
       </div>

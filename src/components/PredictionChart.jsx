@@ -8,9 +8,10 @@ const dataService = polymarketService
 export default function PredictionChart({ market }) {
   const chartContainerRef = useRef()
   const chartRef = useRef()
-  const seriesRef = useRef()
-  const [timeframe, setTimeframe] = useState('1D')
-  const [priceData, setPriceData] = useState([])
+  const yesSeriesRef = useRef()
+  const noSeriesRef = useRef()
+  const [timeframe, setTimeframe] = useState('1d')
+  const [priceData, setPriceData] = useState({ yes: [], no: [] })
   const [loading, setLoading] = useState(true)
 
   // Fetch price history when market or timeframe changes
@@ -23,8 +24,11 @@ export default function PredictionChart({ market }) {
         const history = await dataService.getPriceHistory(market.id, timeframe)
         setPriceData(history)
         
-        if (seriesRef.current && history.length > 0) {
-          seriesRef.current.setData(history)
+        if (yesSeriesRef.current && history.yes.length > 0) {
+          yesSeriesRef.current.setData(history.yes)
+        }
+        if (noSeriesRef.current && history.no.length > 0) {
+          noSeriesRef.current.setData(history.no)
         }
       } catch (error) {
         console.error('Error fetching price history:', error)
@@ -72,10 +76,11 @@ export default function PredictionChart({ market }) {
 
     chartRef.current = chart
 
-    // Add line series for prediction market (0-100¢ range)
-    const lineSeries = chart.addLineSeries({
-      color: '#eab308',
+    // Add line series for Yes outcome (green/yellow)
+    const yesSeries = chart.addLineSeries({
+      color: '#22c55e', // Green for Yes
       lineWidth: 2,
+      title: 'Yes',
       priceFormat: {
         type: 'price',
         precision: 1,
@@ -83,22 +88,46 @@ export default function PredictionChart({ market }) {
       },
     })
 
-    seriesRef.current = lineSeries
+    // Add line series for No outcome (red)
+    const noSeries = chart.addLineSeries({
+      color: '#ef4444', // Red for No
+      lineWidth: 2,
+      title: 'No',
+      priceFormat: {
+        type: 'price',
+        precision: 1,
+        minMove: 0.1,
+      },
+    })
+
+    yesSeriesRef.current = yesSeries
+    noSeriesRef.current = noSeries
 
     // Load initial data if available
-    if (priceData.length > 0) {
-      lineSeries.setData(priceData)
+    if (priceData.yes.length > 0) {
+      yesSeries.setData(priceData.yes)
+    }
+    if (priceData.no.length > 0) {
+      noSeries.setData(priceData.no)
     }
 
     // Subscribe to real-time price updates
     const handlePriceUpdate = (update) => {
-      if (update.marketId === market.id && seriesRef.current) {
-        const newPricePoint = {
-          time: Math.floor(update.timestamp / 1000),
-          value: update.yesPrice,
+      if (update.marketId === market.id) {
+        if (yesSeriesRef.current && update.yesPrice !== undefined) {
+          const newYesPoint = {
+            time: Math.floor(update.timestamp / 1000),
+            value: update.yesPrice,
+          }
+          yesSeriesRef.current.update(newYesPoint)
         }
-        
-        seriesRef.current.update(newPricePoint)
+        if (noSeriesRef.current && update.noPrice !== undefined) {
+          const newNoPoint = {
+            time: Math.floor(update.timestamp / 1000),
+            value: update.noPrice,
+          }
+          noSeriesRef.current.update(newNoPoint)
+        }
       }
     }
 
@@ -135,30 +164,45 @@ export default function PredictionChart({ market }) {
 
   // Update chart when price data changes
   useEffect(() => {
-    if (seriesRef.current && priceData.length > 0) {
-      seriesRef.current.setData(priceData)
+    if (yesSeriesRef.current && priceData.yes.length > 0) {
+      yesSeriesRef.current.setData(priceData.yes)
+    }
+    if (noSeriesRef.current && priceData.no.length > 0) {
+      noSeriesRef.current.setData(priceData.no)
     }
   }, [priceData])
 
-  const timeframes = ['1H', '4H', '1D', '1W', '1M', 'All']
+  const timeframes = ['1m', '1h', '6h', '1d', '1w', 'max']
 
   return (
     <div className="flex flex-col h-full">
-      {/* Timeframe Selector */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b border-white/10">
-        {timeframes.map((tf) => (
-          <button
-            key={tf}
-            onClick={() => setTimeframe(tf)}
-            className={`px-3 py-1 text-xs rounded transition ${
-              timeframe === tf
-                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            {tf}
-          </button>
-        ))}
+      {/* Timeframe Selector and Legend */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-white/10">
+        <div className="flex items-center gap-2">
+          {timeframes.map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={`px-3 py-1 text-xs rounded transition ${
+                timeframe === tf
+                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-0.5 bg-green-500"></div>
+            <span className="text-gray-400">Yes</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-0.5 bg-red-500"></div>
+            <span className="text-gray-400">No</span>
+          </div>
+        </div>
       </div>
 
       {/* Chart Container */}
