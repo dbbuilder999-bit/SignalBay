@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Star, Sparkles, BarChart3 } from 'lucide-react'
+import { Search, Star, Sparkles, BarChart3, Trophy } from 'lucide-react'
 
 // X (Twitter) Logo Component
 const XLogo = ({ className = "h-5 w-5" }) => (
@@ -23,6 +23,11 @@ import PortfolioView from './components/PortfolioView'
 import TruncatedText from './components/TruncatedText'
 import LandingPage from './components/LandingPage'
 import LoginModal from './components/LoginModal'
+import TraderLeaderboard from './components/TraderLeaderboard'
+import TraderProfile from './components/TraderProfile'
+import MarketComments from './components/MarketComments'
+import TopTraders from './components/TopTraders'
+import SportsMarketsView from './components/SportsMarketsView'
 // Polymarket is the source of truth for market data
 import { polymarketService } from './services/PolymarketService'
 import { walletService } from './services/WalletService'
@@ -73,9 +78,10 @@ export default function SignalBay() {
       return true
     }
   })
-  const [viewMode, setViewMode] = useState('markets') // 'events' | 'markets' | 'trade' | 'analyze' | 'portfolio'
+  const [viewMode, setViewMode] = useState('markets') // 'events' | 'markets' | 'trade' | 'analyze' | 'portfolio' | 'leaderboard' | 'trader'
   const [selectedMarket, setSelectedMarket] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null) // Track selected event for filtering markets
+  const [selectedTrader, setSelectedTrader] = useState(null) // Track selected trader for profile view
   const [markets, setMarkets] = useState([])
   const [activeTab, setActiveTab] = useState('Related')
   const [loading, setLoading] = useState(true)
@@ -112,6 +118,7 @@ export default function SignalBay() {
       try {
         setLoading(true)
         // Use same limit as MarketsList to leverage cache
+        debugger;
         const marketData = await dataService.getMarkets({ limit: 1000, active: true, closed: false })
         setMarkets(marketData)
         if (marketData.length > 0 && !selectedMarket) {
@@ -282,7 +289,21 @@ export default function SignalBay() {
 
   // Show landing page if not visited before
   if (showLanding) {
-    return <LandingPage onStartTrading={handleStartTrading} />
+    return (
+      <LandingPage 
+        onStartTrading={handleStartTrading}
+        onViewTrader={(view, trader) => {
+          if (view === 'leaderboard') {
+            setViewMode('leaderboard')
+            setSelectedTrader(null)
+          } else if (view === 'trader' && trader) {
+            setSelectedTrader(trader)
+            setViewMode('trader')
+          }
+          setShowLanding(false)
+        }}
+      />
+    )
   }
 
   return (
@@ -358,6 +379,30 @@ export default function SignalBay() {
                 Portfolio
               </button>
               <button
+                onClick={() => {
+                  setViewMode('leaderboard')
+                  setSelectedTrader(null)
+                }}
+                className={`transition text-sm flex items-center gap-1.5 ${
+                  viewMode === 'leaderboard'
+                    ? 'text-white font-semibold'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                <Trophy className="h-4 w-4" />
+                Leaderboard
+              </button>
+              <button
+                onClick={() => setViewMode('sports')}
+                className={`transition text-sm ${
+                  viewMode === 'sports'
+                    ? 'text-white font-semibold'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Sports
+              </button>
+              <button
                 onClick={() => setViewMode('trade')}
                 className={`transition text-sm ${
                   viewMode === 'trade'
@@ -415,6 +460,41 @@ export default function SignalBay() {
         <PortfolioView 
           onSelectMarket={(market) => {
             // Add market to markets list if not already present
+            setMarkets(prev => {
+              const exists = prev.find(m => m.id === market.id)
+              if (exists) return prev
+              return [market, ...prev]
+            })
+            setSelectedMarket(market)
+            setViewMode('trade')
+          }}
+        />
+      ) : viewMode === 'leaderboard' ? (
+        <TraderLeaderboard 
+          onSelectTrader={(trader) => {
+            setSelectedTrader(trader)
+            setViewMode('trader')
+          }}
+        />
+      ) : viewMode === 'top-traders' ? (
+        <TopTraders 
+          onSelectTrader={(trader) => {
+            if (trader.view === 'leaderboard') {
+              setViewMode('leaderboard')
+            } else {
+              setSelectedTrader(trader)
+              setViewMode('trader')
+            }
+          }}
+        />
+      ) : viewMode === 'trader' ? (
+        <TraderProfile 
+          trader={selectedTrader}
+          onBack={() => {
+            setSelectedTrader(null)
+            setViewMode('leaderboard')
+          }}
+          onSelectMarket={(market) => {
             setMarkets(prev => {
               const exists = prev.find(m => m.id === market.id)
               if (exists) return prev
@@ -506,6 +586,39 @@ export default function SignalBay() {
               setViewMode('markets')
             }
           }}
+        />
+      ) : viewMode === 'sports' ? (
+        <SportsMarketsView 
+          onSelectMarket={async (market) => {
+            setLoadingMarket(true)
+            try {
+              // If market doesn't have prices, try to fetch full market data
+              if (!market.yesPrice || !market.noPrice) {
+                try {
+                  const fullMarket = await dataService.getMarket(market.id)
+                  if (fullMarket) {
+                    market = fullMarket
+                  }
+                } catch (error) {
+                  // Continue with existing market data if fetch fails
+                }
+              }
+              // Ensure prices have defaults
+              if (!market.yesPrice) market.yesPrice = 50
+              if (!market.noPrice) market.noPrice = 50
+              // Add market to markets list if not already present
+              setMarkets(prev => {
+                const exists = prev.find(m => m.id === market.id)
+                if (exists) return prev
+                return [market, ...prev]
+              })
+              setSelectedMarket(market)
+              setViewMode('trade') // Switch to trade view
+            } finally {
+              setLoadingMarket(false)
+            }
+          }}
+          onViewAllMarkets={() => setViewMode('markets')}
         />
       ) : viewMode === 'markets' ? (
         <MarketsList 

@@ -58,43 +58,9 @@ class PolymarketService {
   async getMarkets(options = {}) {
     try {
       
-      // Check cache - if we have a cached result with same or larger limit, use it
-      const requestedLimit = options.limit || 20
-      let cached = null
       let cacheKey = null
       
-      // Try to find a cached result that satisfies our request
-      // Look for any cache entry with same active/closed settings and sufficient limit
-      const activeFilter = options.active !== false
-      const closedFilter = options.closed !== undefined ? options.closed : false
-      
-      // for (const [key, value] of this.cache.entries()) {
-      //   if (key.startsWith('markets-')) {
-      //     try {
-      //       const cachedOptions = JSON.parse(key.replace('markets-', ''))
-      //       const cachedLimit = cachedOptions.limit || 20
-      //       const cachedActive = cachedOptions.active !== false
-      //       const cachedClosed = cachedOptions.closed !== undefined ? cachedOptions.closed : false
-            
-      //       // If cached limit is >= requested limit and other options match, use it
-      //       if (cachedLimit >= requestedLimit && 
-      //           cachedActive === activeFilter &&
-      //           cachedClosed === closedFilter &&
-      //           Date.now() - value.timestamp < this.cacheTimeout) {
-      //         console.log(`[Cache HIT] Using cached data: ${key} (requested limit: ${requestedLimit}, age: ${Math.round((Date.now() - value.timestamp) / 1000)}s)`)
-      //         // Return a slice if we need fewer items
-      //         if (cachedLimit > requestedLimit) {
-      //           return value.data.slice(0, requestedLimit)
-      //         }
-      //         return value.data
-      //       }
-      //     } catch (e) {
-      //       // Skip invalid cache keys
-      //       continue
-      //     }
-      //   }
-      // }
-      
+
       // If no suitable cache found, create new cache key
       cacheKey = `markets-${JSON.stringify(options)}`
 
@@ -128,6 +94,7 @@ class PolymarketService {
       })
       // Try the Gamma Markets API endpoint (uses proxy in dev, direct in prod)
       const url = `${this.apiUrl}/markets?${params.toString()}`
+      debugger;
       const response = await fetch(url,
         {
           headers: {
@@ -414,6 +381,7 @@ class PolymarketService {
       )
 
       if (!market) {
+        debugger;
         // Try fetching specific market by condition ID or tokens
         try {
           const response = await fetch(
@@ -1011,7 +979,7 @@ class PolymarketService {
         return cached.data
       }
       
-
+      debugger;
       const response = await fetch(
         `${this.apiUrl}/sports`,
         {
@@ -1096,8 +1064,13 @@ class PolymarketService {
         limit: String(options.limit || 100),
         ...(options.offset && { offset: String(options.offset) }),
         ...(options.featured !== undefined && { featured: String(options.featured) }),
+        ...(options.tag_id && { 
+          tag_id: Array.isArray(options.tag_id) 
+            ? options.tag_id.map(String).join(',') 
+            : String(options.tag_id) 
+        }),
       })
-
+      debugger;
       const response = await fetch(
         `${this.apiUrl}/events?${params.toString()}`,
         {
