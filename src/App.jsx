@@ -23,10 +23,10 @@ import PortfolioView from './components/PortfolioView'
 import TruncatedText from './components/TruncatedText'
 import LandingPage from './components/LandingPage'
 import LoginModal from './components/LoginModal'
-import TraderLeaderboard from './components/TraderLeaderboard'
-import TraderProfile from './components/TraderProfile'
-import MarketComments from './components/MarketComments'
-import TopTraders from './components/TopTraders'
+// import TraderLeaderboard from './components/TraderLeaderboard'
+// import TraderProfile from './components/TraderProfile'
+// import MarketComments from './components/MarketComments'
+// import TopTraders from './components/TopTraders'
 import SportsMarketsView from './components/SportsMarketsView'
 // Polymarket is the source of truth for market data
 import { polymarketService } from './services/PolymarketService'
@@ -470,40 +470,26 @@ export default function SignalBay() {
           }}
         />
       ) : viewMode === 'leaderboard' ? (
-        <TraderLeaderboard 
-          onSelectTrader={(trader) => {
-            setSelectedTrader(trader)
-            setViewMode('trader')
-          }}
-        />
+        <div className="min-h-screen bg-[#0a0d14] flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-3">Trader Leaderboard</h2>
+            <p className="text-gray-400">Component not available</p>
+          </div>
+        </div>
       ) : viewMode === 'top-traders' ? (
-        <TopTraders 
-          onSelectTrader={(trader) => {
-            if (trader.view === 'leaderboard') {
-              setViewMode('leaderboard')
-            } else {
-              setSelectedTrader(trader)
-              setViewMode('trader')
-            }
-          }}
-        />
+        <div className="min-h-screen bg-[#0a0d14] flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-3">Top Traders</h2>
+            <p className="text-gray-400">Component not available</p>
+          </div>
+        </div>
       ) : viewMode === 'trader' ? (
-        <TraderProfile 
-          trader={selectedTrader}
-          onBack={() => {
-            setSelectedTrader(null)
-            setViewMode('leaderboard')
-          }}
-          onSelectMarket={(market) => {
-            setMarkets(prev => {
-              const exists = prev.find(m => m.id === market.id)
-              if (exists) return prev
-              return [market, ...prev]
-            })
-            setSelectedMarket(market)
-            setViewMode('trade')
-          }}
-        />
+        <div className="min-h-screen bg-[#0a0d14] flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-3">Trader Profile</h2>
+            <p className="text-gray-400">Component not available</p>
+          </div>
+        </div>
       ) : viewMode === 'events' ? (
         <EventsList 
           eventWatchlist={eventWatchlist}
